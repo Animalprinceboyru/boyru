@@ -3,7 +3,7 @@ import sys
 from map_system import GameMap
 from camera import Camera
 from weather import WeatherSystem
-from physics import HUD
+from gui import HUD
 from physics import PhysicsEngine
 
 SCREEN_WIDTH = 1280

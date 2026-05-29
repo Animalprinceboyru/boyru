@@ -1,252 +1,45 @@
-import pygame
-from typing import Optional, List, Any
+import math
+from typing import Tuple, List, Any
 
-COLOR_BG        = (20, 25, 20, 200)
-COLOR_TEXT      = (240, 240, 240)
-COLOR_HIGHLIGHT = (255, 220, 50)
-COLOR_SUCCESS   = (100, 220, 120)
-COLOR_HP        = (220, 60, 60)
-COLOR_STAMINA   = (60, 180, 220)
-COLOR_BORDER    = (100, 180, 100)
+class PhysicsEngine:
+    @staticmethod
+    def move_towards(current_pos: Tuple[float,float],
+                     target_pos:  Tuple[float,float],
+                     speed: float, dt: float) -> Tuple[float,float]:
+        cx, cy = current_pos
+        tx, ty = target_pos
+        dx, dy = tx - cx, ty - cy
+        dist   = math.sqrt(dx*dx + dy*dy)
+        if dist <= speed * dt or dist == 0:
+            return target_pos
+        return (cx + dx/dist * speed * dt,
+                cy + dy/dist * speed * dt)
 
-class HUD:
-    def __init__(self, screen_w: int, screen_h: int):
-        self.screen_w = screen_w
-        self.screen_h = screen_h
+    @staticmethod
+    def check_collision(p1, r1, p2, r2) -> bool:
+        return math.sqrt((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2) < r1 + r2
 
-        pygame.font.init()
-        try:
-            self.font_title  = pygame.font.SysFont("malgungothic", 20, bold=True)
-            self.font_normal = pygame.font.SysFont("malgungothic", 15)
-            self.font_small  = pygame.font.SysFont("malgungothic", 12)
-        except Exception:
-            self.font_title  = pygame.font.SysFont(None, 24, bold=True)
-            self.font_normal = pygame.font.SysFont(None, 18)
-            self.font_small  = pygame.font.SysFont(None, 14)
-
-        self.top_panel  = pygame.Surface((screen_w, 50), pygame.SRCALPHA)
-        self.info_panel = pygame.Surface((320, 280), pygame.SRCALPHA)
-        self.minimap    = pygame.Surface((200, 150), pygame.SRCALPHA)
-
-        self.selected_animal: Optional[Any] = None
-        self.selected_tree:   Optional[Any] = None
-
-    # ── 메인 렌더링 ──
-    def draw(self, screen, weather_system, camera, game_map, animals):
-        self._draw_top_bar(screen, weather_system, camera)
-        self._draw_minimap(screen, camera, game_map, animals)
-        self._draw_controls(screen)
-
-        if self.selected_animal is not None:
-            self._draw_animal_panel(screen)
-        elif self.selected_tree is not None:
-            self._draw_tree_panel(screen)
-
-    # ── 상단 바 ──
-    def _draw_top_bar(self, screen, weather_system, camera):
-        self.top_panel.fill((15, 15, 15, 180))
-        screen.blit(self.top_panel, (0, 0))
-
-        # 날씨
-        icons = {"맑음":"☀","흐림":"☁","비":"🌧","폭풍":"⛈","안개":"🌫"}
-        name  = weather_system.current.value
-        ws    = self.font_title.render(f"{icons.get(name,'?')} {name}", True, COLOR_TEXT)
-        screen.blit(ws, (16, 12))
-
-        # 시간 (중앙)
-        ts = self.font_title.render(f"🕐 {weather_system.time_string}", True, COLOR_HIGHLIGHT)
-        screen.blit(ts, (self.screen_w // 2 - ts.get_width() // 2, 12))
-
-        # 줌/환경 (우측)
-        info = (f"줌: ×{camera.zoom:.2f}  |  "
-                f"이동속도: ×{weather_system.get_speed_modifier():.2f}  |  "
-                f"시야: ×{weather_system.get_visibility_modifier():.2f}")
-        es = self.font_small.render(info, True, (180, 210, 180))
-        screen.blit(es, (self.screen_w - es.get_width() - 16, 16))
-
-    # ── 미니맵 ──
-    def _draw_minimap(self, screen, camera, game_map, animals):
-        mm_x = self.screen_w - 210
-        mm_y = self.screen_h - 160
-        self.minimap.fill((8, 25, 8, 220))
-
-        try:
-            from map_system import TILE_COLORS, TILE_SIZE
-            sx = 200 / game_map.pixel_width
-            sy = 150 / game_map.pixel_height
-            step = 4
-            for ty in range(0, game_map.map_height, step):
-                for tx in range(0, game_map.map_width, step):
-                    color = TILE_COLORS[game_map.tiles[ty][tx]]
-                    mx = int(tx * TILE_SIZE * sx)
-                    my = int(ty * TILE_SIZE * sy)
-                    mw = max(1, int(step * TILE_SIZE * sx))
-                    mh = max(1, int(step * TILE_SIZE * sy))
-                    pygame.draw.rect(self.minimap, color, (mx, my, mw, mh))
-
-            for animal in animals:
-                if hasattr(animal, 'coordinate'):
-                    ax = int(animal.coordinate[0] * sx)
-                    ay = int(animal.coordinate[1] * sy)
-                    c  = getattr(animal, 'minimap_color', COLOR_HIGHLIGHT)
-                    pygame.draw.circle(self.minimap, c, (ax, ay), 3)
-
-            vx = int(camera.x * sx)
-            vy = int(camera.y * sy)
-            vw = int(camera.screen_w / camera.zoom * sx)
-            vh = int(camera.screen_h / camera.zoom * sy)
-            pygame.draw.rect(self.minimap, (255, 255, 255), (vx, vy, vw, vh), 2)
-
-        except ImportError:
-            pygame.draw.rect(self.minimap, (50, 100, 50), (0, 0, 200, 150))
-
-        pygame.draw.rect(self.minimap, COLOR_BORDER, (0, 0, 200, 150), 2)
-        screen.blit(self.minimap, (mm_x, mm_y))
-        label = self.font_small.render("미니맵", True, COLOR_SUCCESS)
-        screen.blit(label, (mm_x + 6, mm_y - 18))
-
-    # ── 동물 패널 ──
-    def _draw_animal_panel(self, screen):
-        animal = self.selected_animal
-        self.info_panel.fill(COLOR_BG)
-
-        name = type(animal).__name__
-        ts   = self.font_title.render(f"🐾 {name.upper()}", True, COLOR_HIGHLIGHT)
-        self.info_panel.blit(ts, (12, 12))
-
-        hp  = getattr(animal, 'hp', 100)
-        mhp = getattr(animal, 'max_hp', 100)
-        st  = getattr(animal, 'stamina', 100)
-        mst = getattr(animal, 'max_stamina', 100)
-        self._bar(self.info_panel, 12, 45, 296, 18, hp,  mhp, COLOR_HP,      "체력")
-        self._bar(self.info_panel, 12, 70, 296, 18, st,  mst, COLOR_STAMINA, "스태미나")
-
-        rows = [
-            ("이동속도", getattr(animal, 'speed',  '?')),
-            ("나이",     getattr(animal, 'age',    '?')),
-            ("성별",     getattr(animal, 'gender', '?')),
-            ("배고픔",   getattr(animal, 'hunger', '?')),
-            ("위치",     (f"({animal.coordinate[0]:.0f}, {animal.coordinate[1]:.0f})"
-                          if hasattr(animal, 'coordinate') else '?')),
-        ]
-        for i, (label, val) in enumerate(rows):
-            s = self.font_normal.render(f"{label:6s}: {val}", True, COLOR_TEXT)
-            self.info_panel.blit(s, (12, 105 + i * 26))
-
-        pygame.draw.rect(self.info_panel, COLOR_BORDER, (0, 0, 320, 280), 2)
-        screen.blit(self.info_panel, (16, 65))
-
-    # ── 나무 패널 ──
-    def _draw_tree_panel(self, screen):
-        tree = self.selected_tree
-        self.info_panel.fill(COLOR_BG)
-
-        ts = self.font_title.render("🌳 나무 정보", True, COLOR_SUCCESS)
-        self.info_panel.blit(ts, (12, 12))
-
-        self._bar(self.info_panel, 12, 45, 296, 18,
-                  tree.health, 100, COLOR_HP, "나무 체력")
-
-        names = {"normal":"일반 나무 🌿","tall":"키 큰 나무 🌲","wide":"넓은 나무 🌳"}
-        rows  = [
-            ("종류",    names.get(tree.tree_type, "나무")),
-            ("타일위치", f"({tree.tile_x}, {tree.tile_y})"),
-            ("크기",    f"{tree.width_tiles} × {tree.height_tiles} 타일"),
-            ("상태",    "💥 부러짐" if tree.broken else "✅ 건강함"),
-            ("둥지",    "🪺 있음"   if tree.has_nest else "❌ 없음"),
-        ]
-        if tree.has_nest:
-            rows.append(("둥지상태", "🐦 점유됨" if tree.nest_occupied else "⭕ 비어있음"))
-
-        for i, (label, val) in enumerate(rows):
-            color = COLOR_SUCCESS if "둥지" in label and tree.has_nest else COLOR_TEXT
-            s = self.font_normal.render(f"{label:6s}: {val}", True, color)
-            self.info_panel.blit(s, (12, 80 + i * 26))
-
-        guide = self.font_small.render("🐒 원숭이가 수관 영역에 올라갈 수 있습니다",
-                                       True, (150, 200, 150))
-        self.info_panel.blit(guide, (12, 80 + len(rows) * 26 + 8))
-
-        pygame.draw.rect(self.info_panel, COLOR_BORDER, (0, 0, 320, 280), 2)
-        screen.blit(self.info_panel, (16, 65))
-
-    # ── 조작법 안내 ──
-    def _draw_controls(self, screen):
-        lines = [
-            ("🎮 조작법",          True),
-            ("WASD / 방향키  : 이동",     False),
-            ("Shift + WASD  : 빠른이동",  False),
-            ("마우스 휠      : 줌",        False),
-            ("마우스 클릭    : 선택",      False),
-            ("ESC           : 선택해제",   False),
-            ("",                           False),
-            ("🔧 개발자",          True),
-            ("F1  : 맵 재생성",            False),
-            ("F2  : 날씨 변경",            False),
-            ("F3  : 선택 나무 파괴",       False),
-        ]
-        lh = 20
-        pw = 240
-        ph = len(lines) * lh + 16
-        px = 16
-        py = self.screen_h - ph - 16
-
-        bg = pygame.Surface((pw, ph), pygame.SRCALPHA)
-        bg.fill((15, 15, 15, 180))
-        screen.blit(bg, (px, py))
-
-        for i, (text, is_title) in enumerate(lines):
-            if not text:
+    @staticmethod
+    def apply_separation(animals: List[Any], sep: float = 20.0):
+        for i, a1 in enumerate(animals):
+            if not hasattr(a1, 'coordinate'):
                 continue
-            color = COLOR_HIGHLIGHT if is_title else (180, 200, 180)
-            font  = self.font_normal if is_title else self.font_small
-            s = font.render(text, True, color)
-            screen.blit(s, (px + 12, py + 8 + i * lh))
+            for a2 in animals[i+1:]:
+                if not hasattr(a2, 'coordinate'):
+                    continue
+                x1,y1 = a1.coordinate
+                x2,y2 = a2.coordinate
+                d = math.sqrt((x1-x2)**2 + (y1-y2)**2)
+                if 0 < d < sep:
+                    dx, dy = (x1-x2)/d, (y1-y2)/d
+                    f = (sep - d) * 0.5
+                    a1.coordinate = (x1 + dx*f, y1 + dy*f)
+                    a2.coordinate = (x2 - dx*f, y2 - dy*f)
 
-    # ── 스탯 바 헬퍼 ──
-    def _bar(self, surface, x, y, w, h, current, maximum, color, label):
-        pygame.draw.rect(surface, (50, 50, 50), (x, y, w, h))
-        if maximum > 0:
-            fw = int(w * max(0.0, min(1.0, current / maximum)))
-            if fw > 0:
-                pygame.draw.rect(surface, color, (x, y, fw, h))
-        pygame.draw.rect(surface, (150, 150, 150), (x, y, w, h), 1)
-        ts = self.font_small.render(f"{label}: {int(current)} / {int(maximum)}",
-                                    True, COLOR_TEXT)
-        surface.blit(ts, (x + 6, y + 2))
-
-    # ── 클릭 처리 ──
-    def handle_click(self, world_x: float, world_y: float, animals: List[Any], game_map):
-        # 1. 동물 우선
-        best, best_dist = None, float('inf')
-        for animal in animals:
-            if not hasattr(animal, 'coordinate'):
-                continue
-            ax, ay = animal.coordinate
-            d = ((ax - world_x)**2 + (ay - world_y)**2) ** 0.5
-            if d < 35 and d < best_dist:
-                best_dist, best = d, animal
-
-        if best is not None:
-            self.selected_animal = best
-            self.selected_tree   = None
-            print(f"🐾 동물 선택: {type(최고).__name__} "
-                  f"@ ({best.coordinate[0]:.0f}, {best.coordinate[1]:.0f})")
-            return
-
-        # 2. 나무
-        try:
-            tree = game_map.get_tree_at_pixel(world_x, world_y)
-            if tree is not None:
-                self.selected_animal = None
-                self.selected_tree   = tree
-                print(f"🌳 나무 선택: {tree.tree_type} "
-                      f"@ 타일({tree.tile_x}, {tree.tile_y})"
-                      f"{' [둥지]' if tree.has_nest else ''}")
-                return
-        except Exception as e:
-            print(f"나무 선택 오류: {e}")
-
-        # 3. 빈 공간
-        self.selected_animal = None
-        self.selected_tree   = None
+    @staticmethod
+    def keep_in_bounds(pos: Tuple[float,float],
+                       map_w: int, map_h: int,
+                       margin: int = 32) -> Tuple[float,float]:
+        x, y = pos
+        return (max(float(margin), min(float(map_w - margin), x)),
+                max(float(margin), min(float(map_h - margin), y)))
