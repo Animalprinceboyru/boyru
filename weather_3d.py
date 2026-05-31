@@ -31,38 +31,50 @@ class WeatherSystem3D(Entity):
         self.game_time += time.dt * self.time_speed * 0.1 
         if self.game_time >= 24.0: self.game_time = 0.0
 
-        # 태양의 높이를 sin 그래프(-1.0 ~ 1.0)로 계산
-        angle = ((self.game_time - 6) / 24) * math.pi * 2
-        sun_height = math.sin(angle)
+        # 🌟 일출과 일몰 시간을 직접 설정! (낮을 훨씬 길게 만듦)
+        sunrise = 5.0   # 새벽 5시 일출
+        sunset = 20.0   # 저녁 8시(20시) 일몰
+        day_length = sunset - sunrise
+        night_length = 24.0 - day_length
 
-        # 1. 태양광 (직사광선)
+        # 시간에 따라 태양의 고도와 회전 각도를 계산
+        if sunrise <= self.game_time <= sunset:
+            # 낮 시간 진행률 (0.0 ~ 1.0)
+            day_progress = (self.game_time - sunrise) / day_length
+            sun_height = math.sin(day_progress * math.pi)
+            rotation_angle = day_progress * 180
+        else:
+            # 밤 시간 진행률 (0.0 ~ 1.0)
+            if self.game_time > sunset:
+                night_progress = (self.game_time - sunset) / night_length
+            else:
+                night_progress = (self.game_time + (24.0 - sunset)) / night_length
+            sun_height = -math.sin(night_progress * math.pi)
+            rotation_angle = 180 + (night_progress * 180)
+
+        # 색상 및 밝기 계산 (이전의 완벽한 지구과학 셰이더 적용)
         if sun_height > 0:
-            sun_r = 1.0
-            sun_g = 0.4 + (0.6 * sun_height)
-            sun_b = 0.1 + (0.9 * sun_height)
-            self.sun_light.color = color.rgba(sun_r, sun_g, sun_b, sun_height)
+            intensity = math.sqrt(sun_height)
+            
+            sun_r = 0.8 + (0.2 * intensity)
+            sun_g = 0.3 + (0.7 * intensity)
+            sun_b = 0.1 + (0.9 * (intensity ** 2)) 
+            
+            self.sun_light.color = color.rgba(sun_r * intensity, sun_g * intensity, sun_b * intensity, 1)
+
+            amb_r = 0.3 + (0.55 * intensity)
+            amb_g = 0.2 + (0.65 * intensity)
+            amb_b = 0.25 + (0.60 * intensity)
+            self.ambient_light.color = color.rgba(amb_r, amb_g, amb_b, 1)
         else:
             self.sun_light.color = color.rgba(0, 0, 0, 0)
-
-        # 2. 주변광 (맵 전체의 밝기) - 핵심 수정!
-        # 낮과 밤이 교차하는 지점(sun_height == 0)에서 양쪽 공식의 결과값이
-        # 동일하게 r=0.25, g=0.15, b=0.20 이 나오도록 맞췄습니다.
-        if sun_height > 0:
-            # 낮: 태양이 높을수록 밝아짐
-            amb_r = 0.25 + (0.45 * sun_height)
-            amb_g = 0.15 + (0.55 * sun_height)
-            amb_b = 0.20 + (0.50 * sun_height)
-        else:
-            # 밤: 한밤중(sun_height = -1)으로 갈수록 어두운 남색으로 변함
-            night_intensity = 1.0 + sun_height  # 0(한밤중) ~ 1(일몰/일출)
+            
+            night_intensity = 1.0 + sun_height 
             amb_r = 0.05 + (0.20 * night_intensity)
-            amb_g = 0.05 + (0.10 * night_intensity)
-            amb_b = 0.15 + (0.05 * night_intensity)
+            amb_g = 0.05 + (0.15 * night_intensity)
+            amb_b = 0.15 + (0.10 * night_intensity)
+            self.ambient_light.color = color.rgba(amb_r, amb_g, amb_b, 1)
 
-        self.ambient_light.color = color.rgba(amb_r, amb_g, amb_b, 1)
-
-        # 3. 그림자(태양) 각도를 24시간 내내 멈추지 않고 360도 회전
-        rotation_angle = ((self.game_time - 6) / 12) * 180
         self.sun_light.rotation_x = rotation_angle
 
     def set_weather(self, weather_type):
@@ -73,16 +85,4 @@ class WeatherSystem3D(Entity):
         if self.current == "Sunny":
             scene.fog_density = (2000, 3000)
             camera.background_color = color.rgb32(135, 206, 235)
-            self.weather_filter.color = color.rgba(0, 0, 0, 0)
-
-        elif self.current == "Rainy":
-            scene.fog_density = (50, 200)
-            scene.fog_color = color.rgb32(80, 90, 100)
-            camera.background_color = color.rgb32(80, 90, 100)
-            self.weather_filter.color = color.rgba(0.1, 0.15, 0.2, 0.4) 
-
-        elif self.current == "Foggy":
-            scene.fog_density = (20, 100)
-            scene.fog_color = color.rgb32(200, 200, 200)
-            camera.background_color = color.rgb32(200, 200, 200)
-            self.weather_filter.color = color.rgba(0, 0, 0, 0)
+            self

@@ -33,17 +33,21 @@ class FlyingCamera(Entity):
         self.y = clamp(self.y, 2, 120)
         self.z = clamp(self.z, 0, self.map_h)
 
-        # 🌟 핵심: 우클릭 중일 때 마우스를 화면에 가둬서(locked) 무한 회전 가능하게 함!
-        if mouse.right:
-            mouse.locked = True
+        # 🌟 핵심 수정: 마우스가 잠겨있을 때만(우클릭 중일 때만) 회전각 계산!
+        if mouse.locked:
             self.rotation_y += mouse.velocity[0] * self.mouse_sensitivity
             self.rotation_x -= mouse.velocity[1] * self.mouse_sensitivity
             self.rotation_x = clamp(self.rotation_x, -90, 90)
-        else:
-            mouse.locked = False
 
+    # 매 프레임이 아니라 키보드/마우스 이벤트가 발생할 때만 작동하는 함수
     def input(self, key):
         if key == 'scroll up':
             self.position += self.forward * 10
         if key == 'scroll down':
             self.position -= self.forward * 10
+            
+        # 🌟 우클릭을 '누를 때' 잠그고 '뗄 때' 풉니다. 이렇게 해야 속도(velocity)가 정상 계산됩니다.
+        if key == 'right mouse down':
+            mouse.locked = True
+        elif key == 'right mouse up':
+            mouse.locked = False
