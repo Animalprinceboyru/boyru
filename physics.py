@@ -2,6 +2,7 @@ import math
 from typing import Tuple, List, Any
 
 class PhysicsEngine:
+
     @staticmethod
     def move_towards(current_pos: Tuple[float,float],
                      target_pos:  Tuple[float,float],
@@ -27,8 +28,8 @@ class PhysicsEngine:
             for a2 in animals[i+1:]:
                 if not hasattr(a2, 'coordinate'):
                     continue
-                x1,y1 = a1.coordinate
-                x2,y2 = a2.coordinate
+                x1, y1 = a1.coordinate
+                x2, y2 = a2.coordinate
                 d = math.sqrt((x1-x2)**2 + (y1-y2)**2)
                 if 0 < d < sep:
                     dx, dy = (x1-x2)/d, (y1-y2)/d

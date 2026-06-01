@@ -1,12 +1,13 @@
 import pygame
 from typing import Optional, List, Any
 
+# 색상 팔레트 (이모지 없는 텍스트만 사용)
 COLOR_BG        = (20, 25, 20, 200)
 COLOR_TEXT      = (240, 240, 240)
 COLOR_HIGHLIGHT = (255, 220, 50)
 COLOR_SUCCESS   = (100, 220, 120)
-COLOR_HP        = (220, 60, 60)
-COLOR_STAMINA   = (60, 180, 220)
+COLOR_HP        = (220, 60,  60)
+COLOR_STAMINA   = (60,  180, 220)
 COLOR_BORDER    = (100, 180, 100)
 
 class HUD:
@@ -24,47 +25,59 @@ class HUD:
             self.font_normal = pygame.font.SysFont(None, 18)
             self.font_small  = pygame.font.SysFont(None, 14)
 
-        self.top_panel  = pygame.Surface((screen_w, 50), pygame.SRCALPHA)
-        self.info_panel = pygame.Surface((320, 280), pygame.SRCALPHA)
+        self.top_panel  = pygame.Surface((screen_w, 55), pygame.SRCALPHA)
+        self.info_panel = pygame.Surface((340, 300), pygame.SRCALPHA)
         self.minimap    = pygame.Surface((200, 150), pygame.SRCALPHA)
 
         self.selected_animal: Optional[Any] = None
         self.selected_tree:   Optional[Any] = None
 
-    # ── 메인 렌더링 ──
+    # ══════════════════════════════════════════
+    # 메인 렌더링
+    # ══════════════════════════════════════════
     def draw(self, screen, weather_system, camera, game_map, animals):
         self._draw_top_bar(screen, weather_system, camera)
         self._draw_minimap(screen, camera, game_map, animals)
-        self._draw_controls(screen)
+        self._draw_controls(screen, weather_system)
 
         if self.selected_animal is not None:
             self._draw_animal_panel(screen)
         elif self.selected_tree is not None:
             self._draw_tree_panel(screen)
 
-    # ── 상단 바 ──
+    # ══════════════════════════════════════════
+    # 상단 바 (이모지 없이 텍스트만)
+    # ══════════════════════════════════════════
     def _draw_top_bar(self, screen, weather_system, camera):
-        self.top_panel.fill((15, 15, 15, 180))
+        self.top_panel.fill((15, 15, 15, 185))
         screen.blit(self.top_panel, (0, 0))
 
-        # 날씨
-        icons = {"맑음":"☀","흐림":"☁","비":"🌧","폭풍":"⛈","안개":"🌫"}
-        name  = weather_system.current.value
-        ws    = self.font_title.render(f"{icons.get(name,'?')} {name}", True, COLOR_TEXT)
-        screen.blit(ws, (16, 12))
+        # 날씨 (텍스트만)
+        ws = self.font_title.render(
+            f"날씨: {weather_system.current.value}", True, COLOR_TEXT)
+        screen.blit(ws, (16, 10))
 
-        # 시간 (중앙)
-        ts = self.font_title.render(f"🕐 {weather_system.time_string}", True, COLOR_HIGHLIGHT)
-        screen.blit(ts, (self.screen_w // 2 - ts.get_width() // 2, 12))
+        # 시간 + 배속 (중앙)
+        time_str = (f"시간: {weather_system.time_string}  "
+                    f"배속: {weather_system.speed_string}")
+        ts = self.font_title.render(time_str, True, COLOR_HIGHLIGHT)
+        screen.blit(ts, (self.screen_w // 2 - ts.get_width() // 2, 10))
 
-        # 줌/환경 (우측)
-        info = (f"줌: ×{camera.zoom:.2f}  |  "
-                f"이동속도: ×{weather_system.get_speed_modifier():.2f}  |  "
-                f"시야: ×{weather_system.get_visibility_modifier():.2f}")
+        # 줌 / 환경 (우측)
+        info = (f"줌 {camera.zoom:.2f}x  |  "
+                f"이동속도 {weather_system.get_speed_modifier():.2f}x  |  "
+                f"시야 {weather_system.get_visibility_modifier():.2f}x")
         es = self.font_small.render(info, True, (180, 210, 180))
-        screen.blit(es, (self.screen_w - es.get_width() - 16, 16))
+        screen.blit(es, (self.screen_w - es.get_width() - 16, 14))
 
-    # ── 미니맵 ──
+        # 배속 힌트 (두 번째 줄)
+        hint = "[ : 느리게    ] : 빠르게"
+        hs = self.font_small.render(hint, True, (150, 180, 150))
+        screen.blit(hs, (self.screen_w // 2 - hs.get_width() // 2, 34))
+
+    # ══════════════════════════════════════════
+    # 미니맵
+    # ══════════════════════════════════════════
     def _draw_minimap(self, screen, camera, game_map, animals):
         mm_x = self.screen_w - 210
         mm_y = self.screen_h - 160
@@ -72,17 +85,17 @@ class HUD:
 
         try:
             from map_system import TILE_COLORS, TILE_SIZE
-            sx = 200 / game_map.pixel_width
-            sy = 150 / game_map.pixel_height
+            sx   = 200 / game_map.pixel_width
+            sy   = 150 / game_map.pixel_height
             step = 4
             for ty in range(0, game_map.map_height, step):
                 for tx in range(0, game_map.map_width, step):
                     color = TILE_COLORS[game_map.tiles[ty][tx]]
-                    mx = int(tx * TILE_SIZE * sx)
-                    my = int(ty * TILE_SIZE * sy)
-                    mw = max(1, int(step * TILE_SIZE * sx))
-                    mh = max(1, int(step * TILE_SIZE * sy))
-                    pygame.draw.rect(self.minimap, color, (mx, my, mw, mh))
+                    mx_   = int(tx * TILE_SIZE * sx)
+                    my_   = int(ty * TILE_SIZE * sy)
+                    mw    = max(1, int(step * TILE_SIZE * sx))
+                    mh    = max(1, int(step * TILE_SIZE * sy))
+                    pygame.draw.rect(self.minimap, color, (mx_, my_, mw, mh))
 
             for animal in animals:
                 if hasattr(animal, 'coordinate'):
@@ -105,88 +118,100 @@ class HUD:
         label = self.font_small.render("미니맵", True, COLOR_SUCCESS)
         screen.blit(label, (mm_x + 6, mm_y - 18))
 
-    # ── 동물 패널 ──
+    # ══════════════════════════════════════════
+    # 동물 패널
+    # ══════════════════════════════════════════
     def _draw_animal_panel(self, screen):
         animal = self.selected_animal
         self.info_panel.fill(COLOR_BG)
 
         name = type(animal).__name__
-        ts   = self.font_title.render(f"🐾 {name.upper()}", True, COLOR_HIGHLIGHT)
+        ts   = self.font_title.render(f"[동물] {name.upper()}", True, COLOR_HIGHLIGHT)
         self.info_panel.blit(ts, (12, 12))
 
-        hp  = getattr(animal, 'hp', 100)
-        mhp = getattr(animal, 'max_hp', 100)
-        st  = getattr(animal, 'stamina', 100)
+        hp  = getattr(animal, 'hp',          100)
+        mhp = getattr(animal, 'max_hp',      100)
+        st  = getattr(animal, 'stamina',     100)
         mst = getattr(animal, 'max_stamina', 100)
-        self._bar(self.info_panel, 12, 45, 296, 18, hp,  mhp, COLOR_HP,      "체력")
-        self._bar(self.info_panel, 12, 70, 296, 18, st,  mst, COLOR_STAMINA, "스태미나")
+        self._bar(self.info_panel, 12, 45, 316, 18, hp,  mhp, COLOR_HP,      "체력")
+        self._bar(self.info_panel, 12, 70, 316, 18, st,  mst, COLOR_STAMINA, "스태미나")
 
         rows = [
             ("이동속도", getattr(animal, 'speed',  '?')),
             ("나이",     getattr(animal, 'age',    '?')),
             ("성별",     getattr(animal, 'gender', '?')),
             ("배고픔",   getattr(animal, 'hunger', '?')),
-            ("위치",     (f"({animal.coordinate[0]:.0f}, {animal.coordinate[1]:.0f})"
+            ("위치",     (f"({animal.coordinate[0]:.0f}, "
+                          f"{animal.coordinate[1]:.0f})"
                           if hasattr(animal, 'coordinate') else '?')),
         ]
         for i, (label, val) in enumerate(rows):
-            s = self.font_normal.render(f"{label:6s}: {val}", True, COLOR_TEXT)
+            s = self.font_normal.render(f"{label}: {val}", True, COLOR_TEXT)
             self.info_panel.blit(s, (12, 105 + i * 26))
 
-        pygame.draw.rect(self.info_panel, COLOR_BORDER, (0, 0, 320, 280), 2)
+        pygame.draw.rect(self.info_panel, COLOR_BORDER, (0, 0, 340, 300), 2)
         screen.blit(self.info_panel, (16, 65))
 
-    # ── 나무 패널 ──
+    # ══════════════════════════════════════════
+    # 나무 패널
+    # ══════════════════════════════════════════
     def _draw_tree_panel(self, screen):
         tree = self.selected_tree
         self.info_panel.fill(COLOR_BG)
 
-        ts = self.font_title.render("🌳 나무 정보", True, COLOR_SUCCESS)
+        ts = self.font_title.render("[나무 정보]", True, COLOR_SUCCESS)
         self.info_panel.blit(ts, (12, 12))
 
-        self._bar(self.info_panel, 12, 45, 296, 18,
+        self._bar(self.info_panel, 12, 45, 316, 18,
                   tree.health, 100, COLOR_HP, "나무 체력")
 
-        names = {"normal":"일반 나무 🌿","tall":"키 큰 나무 🌲","wide":"넓은 나무 🌳"}
+        names = {"normal": "일반 나무", "tall": "키 큰 나무", "wide": "넓은 나무"}
         rows  = [
             ("종류",    names.get(tree.tree_type, "나무")),
             ("타일위치", f"({tree.tile_x}, {tree.tile_y})"),
-            ("크기",    f"{tree.width_tiles} × {tree.height_tiles} 타일"),
-            ("상태",    "💥 부러짐" if tree.broken else "✅ 건강함"),
-            ("둥지",    "🪺 있음"   if tree.has_nest else "❌ 없음"),
+            ("크기",    f"{tree.width_tiles} x {tree.height_tiles} 타일"),
+            ("상태",    "부러짐" if tree.broken else "건강함"),
+            ("둥지",    "있음"   if tree.has_nest else "없음"),
         ]
         if tree.has_nest:
-            rows.append(("둥지상태", "🐦 점유됨" if tree.nest_occupied else "⭕ 비어있음"))
+            rows.append(("둥지상태",
+                          "점유됨" if tree.nest_occupied else "비어있음"))
 
         for i, (label, val) in enumerate(rows):
-            color = COLOR_SUCCESS if "둥지" in label and tree.has_nest else COLOR_TEXT
-            s = self.font_normal.render(f"{label:6s}: {val}", True, color)
+            color = (COLOR_SUCCESS if "둥지" in label and tree.has_nest
+                     else COLOR_TEXT)
+            s = self.font_normal.render(f"{label}: {val}", True, color)
             self.info_panel.blit(s, (12, 80 + i * 26))
 
-        guide = self.font_small.render("🐒 원숭이가 수관 영역에 올라갈 수 있습니다",
-                                       True, (150, 200, 150))
-        self.info_panel.blit(guide, (12, 80 + len(rows) * 26 + 8))
+        guide = self.font_small.render(
+            "원숭이가 수관 영역에 올라갈 수 있습니다",
+            True, (150, 200, 150))
+        self.info_panel.blit(guide, (12, 80 + len(rows) * 26 + 10))
 
-        pygame.draw.rect(self.info_panel, COLOR_BORDER, (0, 0, 320, 280), 2)
+        pygame.draw.rect(self.info_panel, COLOR_BORDER, (0, 0, 340, 300), 2)
         screen.blit(self.info_panel, (16, 65))
 
-    # ── 조작법 안내 ──
-    def _draw_controls(self, screen):
+    # ══════════════════════════════════════════
+    # 조작법 안내 (이모지 없이 텍스트만)
+    # ══════════════════════════════════════════
+    def _draw_controls(self, screen, weather_system):
         lines = [
-            ("🎮 조작법",          True),
-            ("WASD / 방향키  : 이동",     False),
-            ("Shift + WASD  : 빠른이동",  False),
-            ("마우스 휠      : 줌",        False),
-            ("마우스 클릭    : 선택",      False),
-            ("ESC           : 선택해제",   False),
-            ("",                           False),
-            ("🔧 개발자",          True),
-            ("F1  : 맵 재생성",            False),
-            ("F2  : 날씨 변경",            False),
-            ("F3  : 선택 나무 파괴",       False),
+            ("[조작법]",             True),
+            ("WASD / 방향키 : 이동",  False),
+            ("Shift+WASD   : 빠른이동",False),
+            ("마우스 휠     : 줌",     False),
+            ("클릭          : 선택",   False),
+            ("ESC           : 해제",   False),
+            ("[ / ]         : 배속 조절", False),
+            ("",                      False),
+            ("[개발자]",              True),
+            ("F1 : 맵 재생성",        False),
+            ("F2 : 날씨 변경",        False),
+            ("F3 : 선택 나무 파괴",   False),
         ]
+
         lh = 20
-        pw = 240
+        pw = 250
         ph = len(lines) * lh + 16
         px = 16
         py = self.screen_h - ph - 16
@@ -203,20 +228,26 @@ class HUD:
             s = font.render(text, True, color)
             screen.blit(s, (px + 12, py + 8 + i * lh))
 
-    # ── 스탯 바 헬퍼 ──
-    def _bar(self, surface, x, y, w, h, current, maximum, color, label):
+    # ══════════════════════════════════════════
+    # 스탯 바
+    # ══════════════════════════════════════════
+    def _bar(self, surface, x, y, w, h,
+             current, maximum, color, label):
         pygame.draw.rect(surface, (50, 50, 50), (x, y, w, h))
         if maximum > 0:
             fw = int(w * max(0.0, min(1.0, current / maximum)))
             if fw > 0:
                 pygame.draw.rect(surface, color, (x, y, fw, h))
         pygame.draw.rect(surface, (150, 150, 150), (x, y, w, h), 1)
-        ts = self.font_small.render(f"{label}: {int(current)} / {int(maximum)}",
-                                    True, COLOR_TEXT)
+        ts = self.font_small.render(
+            f"{label}: {int(current)} / {int(maximum)}", True, COLOR_TEXT)
         surface.blit(ts, (x + 6, y + 2))
 
-    # ── 클릭 처리 ──
-    def handle_click(self, world_x: float, world_y: float, animals: List[Any], game_map):
+    # ══════════════════════════════════════════
+    # 클릭 처리
+    # ══════════════════════════════════════════
+    def handle_click(self, world_x: float, world_y: float,
+                     animals: List[Any], game_map):
         # 1. 동물 우선
         best, best_dist = None, float('inf')
         for animal in animals:
@@ -230,7 +261,7 @@ class HUD:
         if best is not None:
             self.selected_animal = best
             self.selected_tree   = None
-            print(f"🐾 동물 선택: {type(최고).__name__} "
+            print(f"동물 선택: {type(최고).__name__} "
                   f"@ ({best.coordinate[0]:.0f}, {best.coordinate[1]:.0f})")
             return
 
@@ -240,9 +271,10 @@ class HUD:
             if tree is not None:
                 self.selected_animal = None
                 self.selected_tree   = tree
-                print(f"🌳 나무 선택: {tree.tree_type} "
-                      f"@ 타일({tree.tile_x}, {tree.tile_y})"
-                      f"{' [둥지]' if tree.has_nest else ''}")
+                print(f"나무 선택: {tree.tree_type} "
+                      f"{tree.width_tiles}x{tree.height_tiles} "
+                      f"@ ({tree.tile_x}, {tree.tile_y})"
+                      f"{'  [둥지]' if tree.has_nest else ''}")
                 return
         except Exception as e:
             print(f"나무 선택 오류: {e}")
