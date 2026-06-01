@@ -274,7 +274,7 @@ class HUD:
         if best is not None:
             self.selected_animal = best
             self.selected_tree   = None
-            print(f"동물 선택: {type(최고).__name__} "
+            print(f"동물 선택: {type(best).__name__} "
                   f"@ ({best.coordinate[0]:.0f}, {best.coordinate[1]:.0f})")
             return
 
