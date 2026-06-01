@@ -1,9 +1,12 @@
 import random
 from typing import Tuple, List
-from base_classes import Animal, Prey  # Animal, Prey 클래스 불러오기
 
-TILE_SIZE = 32  # 타일 사이즈 고정
+# base_classes 대신 실제 파일인 animal에서 import
+from animal import Animal, Prey, TILE_SIZE 
 
+# ==========================================
+# 1. 카피바라 (Capybara)
+# ==========================================
 class Capybara(Prey):
     SPECIES_VISION_RANGE = 200.0
     SPECIES_VISION_ANGLE = 270.0
@@ -53,22 +56,27 @@ class Capybara(Prey):
             self.move(dt)
 
     def update(self, dt: float, game_map, weather, animals: List[Animal]):
-        super().update(dt, game_map, weather, animals)
+        # Prey.update를 부르면 이중 이동이 발생하므로 Animal.update를 호출
+        Animal.update(self, dt, game_map, weather, animals)
         if not self.alive or self.is_stunned:
             return
         
         self.socialize(animals)
+        predators = self.detect_predators(animals, game_map)
         
-        if self.predator_detected:
+        if predators:
+            self.predator_detected = True
             self.stress_level = min(100.0, self.stress_level + 10.0 * dt)
             self.flee_to_water(game_map, dt)
         else:
+            self.predator_detected = False
             self.stress_level = max(0.0, self.stress_level - 5.0 * dt)
+            self.move(dt) # 평상시 이동 추가
 
-import random
-from typing import Tuple, List
-from base_classes import Animal, Prey  # 부모 클래스 불러오기
 
+# ==========================================
+# 2. 원숭이 (Monkey)
+# ==========================================
 class Monkey(Prey):
     SPECIES_VISION_RANGE = 250.0
     SPECIES_VISION_ANGLE = 200.0
@@ -103,7 +111,8 @@ class Monkey(Prey):
             target.apply_stun(1.5)               
             target.use_stamina(15.0)
 
-    def react_to_predator(self, predators: List[Animal], game_map):
+    # 파라미터에 dt 추가
+    def react_to_predator(self, dt: float, predators: List[Animal], game_map):
         closest_predator = min(predators, key=lambda p: self.distance_to(p))
         dist = self.distance_to(closest_predator)
 
@@ -116,10 +125,12 @@ class Monkey(Prey):
             if trees and random.random() < 0.8:
                 self.climb(trees[0])
             else:
-                self.flee_from(closest_predator, 0.1)
+                self.flee_from(closest_predator, dt) # 0.1 상수 대신 dt 사용
+        elif not self.on_tree:
+            self.flee_from(closest_predator, dt)
 
     def update(self, dt: float, game_map, weather, animals: List[Animal]):
-        super().update(dt, game_map, weather, animals)
+        Animal.update(self, dt, game_map, weather, animals)
         if not self.alive or self.is_stunned:
             return
 
@@ -128,31 +139,39 @@ class Monkey(Prey):
 
         predators = self.detect_predators(animals, game_map)
         if predators:
-            self.react_to_predator(predators, game_map)
+            self.react_to_predator(dt, predators, game_map)
+        else:
+            if not self.on_tree:
+                self.move(dt) # 나무 위에 없을 때 기본 이동
         
         if self.on_tree:
             self.recover_stamina(dt, rate=20.0)
             if random.random() < 0.02 * dt:
                 self.inventory = min(10, self.inventory + 1)
-4. parrot.py (앵무새)
-앵무새는 Animal이 아니라 위에서 만든 FlyingAnimal을 상속받아야 합니다.
-code
-Python
-import random
-from typing import Tuple, List
-from base_classes import Animal, Prey  # Animal, Prey 불러오기
-from flying_animal import FlyingAnimal # 1번에서 만든 비행 동물 클래스 불러오기
 
-class Parrot(FlyingAnimal):
+
+# ==========================================
+# 3. 앵무새 (Parrot)
+# ==========================================
+# 최강빈 조원이 만든 클래스가 choi_animals.py 에 있다고 가정
+try:
+    from choi_animals import FlyingAnimal
+except ImportError:
+    # FlyingAnimal이 없을 경우 오류를 막기 위해 Animal 상속으로 임시 대체
+    FlyingAnimal = Animal 
+
+class Parrot(FlyingAnimal, Prey):
     SPECIES_VISION_RANGE = 400.0  
     SPECIES_VISION_ANGLE = 360.0
 
     def __init__(self, name: str, coordinate: Tuple[float, float], **kwargs):
-        super().__init__(name, coordinate, flying_speed=180.0, danger_range=250.0, **kwargs)
+        super().__init__(name, coordinate, danger_range=250.0, **kwargs)
         self.alert_range = 300.0
         self.max_speed = 70.0 
         
-        self.fly()
+        # __init__에서의 self.fly()는 dt 인자가 없어 오류를 유발하므로 삭제했습니다.
+        if hasattr(self, 'flying_speed'):
+            self.flying_speed = 180.0
 
     def make_alert_sound(self, animals: List[Animal]):
         print(f"🦜 {self.name}가 포식자 발견 경고음을 냅니다!!")
@@ -163,8 +182,8 @@ class Parrot(FlyingAnimal):
                     animal.predator_detected = True 
 
     def update(self, dt: float, game_map, weather, animals: List[Animal]):
-        self.fly() 
-        super().update(dt, game_map, weather, animals)
+        # 다중 상속 버그 방지를 위해 Animal.update 호출
+        Animal.update(self, dt, game_map, weather, animals)
         
         if not self.alive or self.is_stunned:
             return
@@ -172,9 +191,14 @@ class Parrot(FlyingAnimal):
         predators = self.detect_predators(animals, game_map)
         if predators:
             closest = min(predators, key=lambda p: self.distance_to(p))
-            
             if self.distance_to(closest) < self.danger_range:
                 self.flee_from(closest, dt)
                 
                 if random.random() < 0.05: 
                     self.make_alert_sound(animals)
+        else:
+            # 포식자가 없을 때 비행하며 이동
+            if hasattr(self, 'fly'):
+                self.fly(dt)
+            else:
+                self.move(dt)
