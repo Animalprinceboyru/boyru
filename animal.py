@@ -214,7 +214,11 @@ class Animal:
         # 내부 타이머
         self.age_timer = 0.0
         self.hunger_timer = 0.0
-        self.thirst_timer = 0.0
+
+        # 물 찾기
+        self.is_seeking_water = False
+        self._water_target: Optional[Tuple[float, float]] = None
+        self.THIRST_SEEK_THRESHOLD = 65.0  # 물 찾기 시작 임계값
 
         # 생존
         self.alive = True
@@ -484,7 +488,6 @@ class Animal:
 
     def _update_hunger_thirst(self, dt: float):
         self.hunger_timer += dt
-        self.thirst_timer += dt
 
         if self.hunger_timer >= 1.0:
             self.hunger = min(100.0, self.hunger + 0.8)
@@ -492,11 +495,62 @@ class Animal:
             if self.hunger >= 100.0:
                 self._die(cause="starvation")
 
-        if self.thirst_timer >= 1.0:
-            self.thirst = min(100.0, self.thirst + 1.2)
-            self.thirst_timer = 0.0
+        # 갈증 — 환경·활동 상태에 따라 다른 증감률
+        if self.environment_status == "water":
+            # 물속: 갈증 감소
+            self.thirst = max(0.0, self.thirst - 8.0 * dt)
+            if self.thirst <= 0:
+                self.is_seeking_water = False
+                self._water_target = None
+        else:
+            # 물 밖: 활동량에 따라 증가
+            is_active = math.hypot(*self.velocity) > self.max_speed * 0.6
+            rate = 0.55 if is_active else 0.18
+            self.thirst = min(100.0, self.thirst + rate * dt)
             if self.thirst >= 100.0:
                 self._die(cause="dehydration")
+
+    def _find_nearest_water(self, game_map) -> Optional[Tuple[float, float]]:
+        """현재 위치에서 가장 가까운 물 타일 중심 좌표 반환. 없으면 None."""
+        from map_system import TileType
+        cx = int(self.coordinate[0] // TILE_SIZE)
+        cy = int(self.coordinate[1] // TILE_SIZE)
+        best, best_dist = None, float('inf')
+        for dy in range(-40, 41):
+            for dx in range(-40, 41):
+                tx, ty = cx + dx, cy + dy
+                tile = game_map.get_tile(tx, ty)
+                if tile in (TileType.WATER, TileType.DEEP_WATER):
+                    d = math.hypot(dx, dy)
+                    if d < best_dist:
+                        best_dist = d
+                        best = (tx * TILE_SIZE + TILE_SIZE // 2,
+                                ty * TILE_SIZE + TILE_SIZE // 2)
+        return best
+
+    def _update_thirst_behavior(self, dt: float, game_map):
+        """
+        현재 타일에 따라 environment_status 갱신.
+        갈증 임계값 초과 시 물 타일로 이동 목표 설정.
+        """
+        from map_system import TileType
+        tx = int(self.coordinate[0] // TILE_SIZE)
+        ty = int(self.coordinate[1] // TILE_SIZE)
+        tile = game_map.get_tile(tx, ty)
+        in_water = tile in (TileType.WATER, TileType.DEEP_WATER)
+        self.environment_status = "water" if in_water else "land"
+
+        # 목표 도달 시 초기화
+        if in_water and self.thirst <= 0:
+            self.is_seeking_water = False
+            self._water_target = None
+
+        # 갈증 임계값 초과 시 물 목표 설정
+        if (not in_water
+                and self.thirst >= self.THIRST_SEEK_THRESHOLD
+                and not self.is_seeking_water):
+            self.is_seeking_water = True
+            self._water_target = self._find_nearest_water(game_map)
 
     def _update_status_effects(self, dt: float):
         if self.is_stunned:
@@ -521,6 +575,7 @@ class Animal:
         if not self.alive:
             return
         self._update_age(dt)
+        self._update_thirst_behavior(dt, game_map)
         self._update_hunger_thirst(dt)
         self._update_status_effects(dt)
         self.recover_stamina(dt)
@@ -635,6 +690,8 @@ class Predator(Animal):
                 self.try_attack(t)
                 self.move(dt, t.coordinate, self.chase_speed_mul)
                 self.use_stamina(8.0 * dt)
+        elif self.is_seeking_water and self._water_target:
+            self.move(dt, self._water_target)
         else:
             self.move(dt)
 
@@ -762,6 +819,10 @@ class Prey(Animal):
             else:
                 if not self.try_hide(game_map, closest):
                     self.flee_from(closest, dt)
+        elif self.is_seeking_water and self._water_target:
+            self.predator_detected = False
+            self.stop_fleeing()
+            self.move(dt, self._water_target)
         else:
             self.predator_detected = False
             self.stop_fleeing()
