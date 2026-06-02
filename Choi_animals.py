@@ -4,6 +4,9 @@ import math
 from typing import Tuple, Optional, List
 from animal import Animal, Predator, Egg
 
+
+CHOI_IMAGE_CACHE={}
+
 # ==========================================
 # 1. 비행 동물 부모 클래스 (앵무새, 모기 등의 부모)
 # ==========================================
@@ -140,6 +143,56 @@ class Rhino(Animal):
         # 돌진 상태 관리를 위한 변수
         self.is_charging = False
         self.charge_target_tree = None
+        # 💡 1. 여기서 코뿔소 전용 이미지를 설정합니다.
+        self.image_path = "rhino.png"  # 코뿔소 이미지 파일명
+        self.image = None
+        
+        # 이미지가 캐시에 없으면 최초 1회 로드
+        if CHOI_IMAGE_CACHE[self.image_path]:
+            orig_img = CHOI_IMAGE_CACHE[self.image_path]
+            orig_w, orig_h = orig_img.get_size() # 원본 이미지의 가로, 세로 픽셀
+            
+            # 동물의 크기(size)를 기준으로 최대 렌더링 크기 설정
+            target_max_size = int(self.size * 2.5)
+            
+            # 가로와 세로 중 더 긴 쪽을 기준으로 축소/확대 비율(scale_factor)을 계산
+            scale_factor = target_max_size / max(orig_w, orig_h)
+            
+            # 구한 비율을 가로, 세로에 똑같이 곱해주어 비율 유지
+            new_w = int(orig_w * scale_factor)
+            new_h = int(orig_h * scale_factor)
+            
+            # 새로운 가로, 세로 크기로 스케일링
+            self.image = pygame.transform.scale(orig_img, (new_w, new_h))
+
+    # 💡 2. 부모(animal.py)의 draw 함수를 무시하고 여기서 직접 그립니다.
+    def draw(self, screen: pygame.Surface, camera):
+        if not self.alive:
+            return
+
+        # 만약 이미지가 정상적으로 로드되었다면 이미지로 그림
+        if self.image:
+            # 화면 좌표 계산
+            sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
+            
+            # 카메라 줌(Zoom) 비율에 맞춰 이미지 크기 조절
+            scaled_size = int(self.image.get_width() * camera.zoom)
+            scaled_image = pygame.transform.scale(self.image, (scaled_size, scaled_size))
+            
+            # 이미지 출력
+            rect = scaled_image.get_rect(center=(sx, sy))
+            screen.blit(scaled_image, rect)
+            
+            # (선택) 동물의 머리 위에 체력바를 간단하게 다시 그려줍니다.
+            hp_ratio = self.hp / self.max_hp
+            bar_w = 30 * camera.zoom
+            bar_h = 4 * camera.zoom
+            pygame.draw.rect(screen, (220, 60, 60), (sx - bar_w/2, sy - (scaled_size/2) - 10, bar_w, bar_h))
+            pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (scaled_size/2) - 10, bar_w * hp_ratio, bar_h))
+            
+        else:
+            # 이미지가 없거나 로드에 실패하면, 부모(animal.py)의 기본 원형 그리기 사용
+            super().draw(screen, camera)
 
     def make_child(self):
         breed_cost = 40.0
@@ -248,6 +301,26 @@ class Rhino(Animal):
                                         self.coordinate[1] - self.charge_target_coord[1])
             if dist_to_target < 10.0:
                 self._stop_charge()
+        if not getattr(self, 'is_hunting', False) and not getattr(self, 'is_fleeing', False):
+            # 1. 목표 좌표가 없다면 낮은 확률(약 2%)로 새로운 랜덤 목표지점 생성
+            if not getattr(self, 'target_coord', None):
+                if random.random() < 0.02: 
+                    rx = self.coordinate[0] + random.uniform(-200.0, 200.0)
+                    ry = self.coordinate[1] + random.uniform(-200.0, 200.0)
+                    self.target_coord = [rx, ry]
+            
+            # 2. 목표 좌표가 생겼다면 그곳으로 이동
+            if getattr(self, 'target_coord', None):
+                self.move(dt, target=self.target_coord, speed_multiplier=0.5) # 평소엔 천천히 걷기
+                
+                # 3. 목표 지점에 거의 도달했으면 목표 초기화 (다시 가만히 있다가 다른 곳으로 이동)
+                dist_to_target = math.hypot(
+                    self.coordinate[0] - self.target_coord[0],
+                    self.coordinate[1] - self.target_coord[1]
+                )
+                if dist_to_target < 10.0:
+                    self.target_coord = None
+        
 
 
 

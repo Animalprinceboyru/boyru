@@ -155,6 +155,7 @@ class Animal:
         home_coordinate: Optional[Tuple[float, float]] = None,
         environment_status: str = "land",
         max_accelerate: float = 200.0,
+        size: float=100.0,
     ):
         # 기본 정보
         self.name = name
@@ -222,6 +223,9 @@ class Animal:
 
         # 생존
         self.alive = True
+
+        #크기
+        self.size = size
 
     # ── 가속도 (hunger / stamina에 따라 감소) ────
 
