@@ -1,6 +1,7 @@
 import pygame
 import random
 import math
+import camera
 from typing import Tuple, Optional, List
 from animal import Animal, Predator, Egg
 
@@ -148,50 +149,60 @@ class Rhino(Animal):
         self.image = None
         
         # 이미지가 캐시에 없으면 최초 1회 로드
-        if CHOI_IMAGE_CACHE[self.image_path]:
-            orig_img = CHOI_IMAGE_CACHE[self.image_path]
-            orig_w, orig_h = orig_img.get_size() # 원본 이미지의 가로, 세로 픽셀
+        if self.image_path not in CHOI_IMAGE_CACHE:
+            try:
+                loaded_img = pygame.image.load(self.image_path).convert_alpha()
+                CHOI_IMAGE_CACHE[self.image_path] = loaded_img
+            except Exception as e:
+                print(f"⚠️ {name} 이미지 로드 실패: {e}")
+                # 💡 [핵심] 실패하더라도 딕셔너리에 None을 넣어줘야 KeyError가 안 납니다!
+                CHOI_IMAGE_CACHE[self.image_path] = None
+        orig_img = CHOI_IMAGE_CACHE[self.image_path]
+        orig_w, orig_h = orig_img.get_size() # 원본 이미지의 가로, 세로 픽셀
             
-            # 동물의 크기(size)를 기준으로 최대 렌더링 크기 설정
-            target_max_size = int(self.size * 2.5)
+        # 동물의 크기(size)를 기준으로 최대 렌더링 크기 설정
+        target_max_size = int(self.size * 2.5)
             
-            # 가로와 세로 중 더 긴 쪽을 기준으로 축소/확대 비율(scale_factor)을 계산
-            scale_factor = target_max_size / max(orig_w, orig_h)
+        # 가로와 세로 중 더 긴 쪽을 기준으로 축소/확대 비율(scale_factor)을 계산
+        scale_factor = target_max_size / max(orig_w, orig_h)
             
-            # 구한 비율을 가로, 세로에 똑같이 곱해주어 비율 유지
-            new_w = int(orig_w * scale_factor)
-            new_h = int(orig_h * scale_factor)
+        # 구한 비율을 가로, 세로에 똑같이 곱해주어 비율 유지
+        new_w = int(orig_w * scale_factor)
+        new_h = int(orig_h * scale_factor)
             
-            # 새로운 가로, 세로 크기로 스케일링
-            self.image = pygame.transform.scale(orig_img, (new_w, new_h))
+        # 새로운 가로, 세로 크기로 스케일링
+        self.image = pygame.transform.scale(orig_img, (new_w, new_h))
 
     # 💡 2. 부모(animal.py)의 draw 함수를 무시하고 여기서 직접 그립니다.
     def draw(self, screen: pygame.Surface, camera):
         if not self.alive:
             return
 
-        # 만약 이미지가 정상적으로 로드되었다면 이미지로 그림
         if self.image:
+            # 만약 이미지가 정상적으로 로드되었다면 이미지로 그림
             # 화면 좌표 계산
             sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
             
-            # 카메라 줌(Zoom) 비율에 맞춰 이미지 크기 조절
-            scaled_size = int(self.image.get_width() * camera.zoom)
-            scaled_image = pygame.transform.scale(self.image, (scaled_size, scaled_size))
-            
-            # 이미지 출력
+            # 💡 [핵심 수정] 이미지의 현재 가로, 세로 길이에 각각 카메라 줌 비율을 곱해줍니다!
+            new_w = int(self.image.get_width() * camera.zoom)
+            new_h = int(self.image.get_height() * camera.zoom)
+                
+            # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
+            scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
+                
+            # 이미지 출력 (중심점 맞추기)
             rect = scaled_image.get_rect(center=(sx, sy))
             screen.blit(scaled_image, rect)
-            
-            # (선택) 동물의 머리 위에 체력바를 간단하게 다시 그려줍니다.
+                
+            # 체력바 렌더링
             hp_ratio = self.hp / self.max_hp
             bar_w = 30 * camera.zoom
             bar_h = 4 * camera.zoom
-            pygame.draw.rect(screen, (220, 60, 60), (sx - bar_w/2, sy - (scaled_size/2) - 10, bar_w, bar_h))
-            pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (scaled_size/2) - 10, bar_w * hp_ratio, bar_h))
-            
+            # 체력바 위치도 이미지 세로 크기에 맞춰 유동적으로 조절
+            pygame.draw.rect(screen, (220, 60, 60), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w, bar_h))
+            pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w * hp_ratio, bar_h))
         else:
-            # 이미지가 없거나 로드에 실패하면, 부모(animal.py)의 기본 원형 그리기 사용
+            # 이미지 로드 실패 시 기본 원으로 그리기
             super().draw(screen, camera)
 
     def make_child(self):
