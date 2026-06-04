@@ -140,12 +140,12 @@ class Animal:
     def __init__(
         self,
         name: str,
-        coordinate: Tuple[float, float],
+        coordinate: List[float,float],
         hp: int = 100,
         max_hp: int = 100,
         stamina: float = 100.0,
         max_stamina: float = 100.0,
-        max_speed: float = 80.0,
+        max_speed: float = 80000.0,
         hunger: float = 0.0,
         thirst: float = 0.0,
         detection_range: float = 150.0,
@@ -154,7 +154,7 @@ class Animal:
         sex: str = "male",
         home_coordinate: Optional[Tuple[float, float]] = None,
         environment_status: str = "land",
-        max_accelerate: float = 200.0,
+        max_accelerate: float = 20000.0,
         size: float=100.0,
     ):
         # 기본 정보

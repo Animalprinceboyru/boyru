@@ -1,7 +1,6 @@
 import pygame
 import random
 import math
-import camera
 from typing import Tuple, Optional, List
 from animal import Animal, Predator, Egg
 
@@ -144,7 +143,8 @@ class Rhino(Animal):
         # 돌진 상태 관리를 위한 변수
         self.is_charging = False
         self.charge_target_tree = None
-        # 💡 1. 여기서 코뿔소 전용 이미지를 설정합니다.
+        
+        # 💡 1. 여기서 코뿔소 전용 이미지를 설정
         self.image_path = "rhino.png"  # 코뿔소 이미지 파일명
         self.image = None
         
@@ -155,7 +155,7 @@ class Rhino(Animal):
                 CHOI_IMAGE_CACHE[self.image_path] = loaded_img
             except Exception as e:
                 print(f"⚠️ {name} 이미지 로드 실패: {e}")
-                # 💡 [핵심] 실패하더라도 딕셔너리에 None을 넣어줘야 KeyError가 안 납니다!
+                # 💡 [핵심] 실패하더라도 딕셔너리에 None을 넣어줘야함
                 CHOI_IMAGE_CACHE[self.image_path] = None
         orig_img = CHOI_IMAGE_CACHE[self.image_path]
         orig_w, orig_h = orig_img.get_size() # 원본 이미지의 가로, 세로 픽셀
@@ -173,7 +173,7 @@ class Rhino(Animal):
         # 새로운 가로, 세로 크기로 스케일링
         self.image = pygame.transform.scale(orig_img, (new_w, new_h))
 
-    # 💡 2. 부모(animal.py)의 draw 함수를 무시하고 여기서 직접 그립니다.
+    # 💡 2. 부모(animal.py)의 draw 함수 오버라이딩
     def draw(self, screen: pygame.Surface, camera):
         if not self.alive:
             return
@@ -202,7 +202,7 @@ class Rhino(Animal):
             pygame.draw.rect(screen, (220, 60, 60), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w, bar_h))
             pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w * hp_ratio, bar_h))
         else:
-            # 이미지 로드 실패 시 기본 원으로 그리기
+            # 이미지 로드 실패 시 기본 원으로 그리기(부모 클래스)
             super().draw(screen, camera)
 
     def make_child(self):
@@ -236,22 +236,13 @@ class Rhino(Animal):
             self.is_charging = True
             self.charge_attacker = attacker
             
-            # 포식자를 향하는 방향 벡터(dx, dy) 계산
-            dx = attacker.coordinate[0] - self.coordinate[0]
-            dy = attacker.coordinate[1] - self.coordinate[1]
-            dist = math.hypot(dx, dy)
-            
-            if dist == 0:
-                dx, dy = 1, 0
-            else:
-                dx, dy = dx / dist, dy / dist
-                
-            # 포식자 위치를 넘어서, 같은 방향으로 아주 멀리(예: 800픽셀)를 목적지로 설정 (연장선 돌진)
+            #현재 포식자의 위치를 돌진 목표 지점으로 설정
             self.charge_target_coord = (
-                self.coordinate[0] + dx * 800.0,
-                self.coordinate[1] + dy * 800.0
+                attacker.coordinate[0],
+                attacker.coordinate[1]
             )
-            print(f"🦏 🔥 [{self.name}]가 치명상을 입고 격노하여 {attacker.name} 방향으로 맹렬히 돌진합니다!!")
+            
+            print(f"🦏 🔥 [{self.name}]가 치명상을 입고 격노하여 {attacker.name}이(가) 있던 위치로 맹렬히 돌진합니다!!")
 
     def take_damage(self, amount: float, source: str = "unknown", attacker: Optional[Animal] = None):
         super().take_damage(amount, source, attacker)
@@ -315,9 +306,9 @@ class Rhino(Animal):
         if not getattr(self, 'is_hunting', False) and not getattr(self, 'is_fleeing', False):
             # 1. 목표 좌표가 없다면 낮은 확률(약 2%)로 새로운 랜덤 목표지점 생성
             if not getattr(self, 'target_coord', None):
-                if random.random() < 0.02: 
-                    rx = self.coordinate[0] + random.uniform(-200.0, 200.0)
-                    ry = self.coordinate[1] + random.uniform(-200.0, 200.0)
+                if random.random() < 0.5: 
+                    rx = self.coordinate[0] + random.uniform(-2000.0, 2000.0)
+                    ry = self.coordinate[1] + random.uniform(-2000.0, 2000.0)
                     self.target_coord = [rx, ry]
             
             # 2. 목표 좌표가 생겼다면 그곳으로 이동
