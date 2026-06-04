@@ -173,12 +173,16 @@ class Anaconda(Predator):
 
     # ── 환경별 스탯 적용 ────────────────────────
 
-    def _apply_environment_stats(self):
-        """매 프레임 environment_status에 따라 이동 스탯 갱신."""
-        if self.environment_status == "water":
+    def _apply_environment_stats(self, game_map):
+        """현재 타일 위치로 environment_status 갱신 후 이동 스탯 적용."""
+        tx = int(self.coordinate[0] // TILE_SIZE)
+        ty = int(self.coordinate[1] // TILE_SIZE)
+        if game_map.is_water(tx, ty):
+            self.environment_status = "water"
             self.max_speed      = self.water_max_speed
             self.max_accelerate = self.water_max_accelerate
         else:
+            self.environment_status = "land"
             self.max_speed      = self.land_max_speed
             self.max_accelerate = self.land_max_accelerate
 
@@ -309,7 +313,7 @@ class Anaconda(Predator):
         if not self.alive:
             return
 
-        self._apply_environment_stats()
+        self._apply_environment_stats(game_map)
         self._apply_land_stamina_drain(dt)
 
         # 물속일 때만 매복 FSM 작동
@@ -368,4 +372,4 @@ class Anaconda(Predator):
     def __repr__(self):
         return (f"<Anaconda '{self.name}' hp={self.hp}/{self.max_hp} "
                 f"state={self._state} hidden={self.hidden} "
-                f"pos=({self.coordinate[0]:.0f},{self.coordinate[1]:.0f})")
+                f"pos=({self.coordinate[0]:.0f},{self.coordinate[1]:.0f})>")
