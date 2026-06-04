@@ -34,8 +34,8 @@ class PhysicsEngine:
                 if 0 < d < sep:
                     dx, dy = (x1-x2)/d, (y1-y2)/d
                     f = (sep - d) * 0.5
-                    a1.coordinate = (x1 + dx*f, y1 + dy*f)
-                    a2.coordinate = (x2 - dx*f, y2 - dy*f)
+                    a1.coordinate = [x1 + dx*f, y1 + dy*f]
+                    a2.coordinate = [x2 - dx*f, y2 - dy*f] #두개 다 대괄호로 바꿈
 
     @staticmethod
     def keep_in_bounds(pos: Tuple[float,float],

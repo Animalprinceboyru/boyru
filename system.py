@@ -1,10 +1,13 @@
 import pygame
 import sys
+import random #내가 추가
 from map_system import GameMap
 from camera import Camera
 from weather import WeatherSystem
 from gui import HUD
 from physics import PhysicsEngine
+
+from Choi_animals import Rhino, ElectricEel, ToxicFrog #내가 추가
 
 SCREEN_WIDTH  = 1280
 SCREEN_HEIGHT = 720
@@ -31,9 +34,29 @@ def main():
     physics = PhysicsEngine()
 
     animals = []
+    
+    #내가 추가
+    animals.append(Rhino(name="대장코뿔소", coordinate=(400.0, 500.0)))
+    animals.append(ToxicFrog(name="화살독개구리", coordinate=(350.0, 450.0)))
+    
+    # 전기뱀장어는 물 타일 근처에 스폰하는 것이 자연스럽습니다.
+    animals.append(ElectricEel(name="전기뱀장어A", coordinate=(200.0, 200.0)))
+
+    # 2. 반복문을 이용해 여러 마리를 랜덤 위치에 대량 스폰하기
+    for i in range(5):
+        # 안전하게 맵 중앙 부근(500 ~ 1500 픽셀 사이)에 랜덤 배치
+        rx = random.uniform(500.0, 1500.0)
+        ry = random.uniform(500.0, 1500.0)
+        animals.append(ToxicFrog(name=f"독개구리_{i+1}", coordinate=(rx, ry)))
+        
+    for i in range(2):
+        rx = random.uniform(600.0, 1200.0)
+        ry = random.uniform(600.0, 1200.0)
+        animals.append(Rhino(name=f"돌진코뿔소_{i+1}", coordinate=(rx, ry)))
 
     print("모든 시스템 초기화 완료!")
     print("WASD 이동 | 마우스 휠 줌 | [ ] 시간 배속 조절")
+    #내가 추가한 부분 끝
 
     running = True
     while running:
@@ -94,10 +117,10 @@ def main():
             physics.apply_separation(animals)
             for animal in animals:
                 if hasattr(animal, 'coordinate'):
-                    animal.coordinate = physics.keep_in_bounds(
+                    animal.coordinate = list(physics.keep_in_bounds(
                         animal.coordinate,
                         game_map.pixel_width, game_map.pixel_height
-                    )
+                    )) #list() 추가
 
         # ── 렌더링 ──
         screen.fill((15, 30, 15))

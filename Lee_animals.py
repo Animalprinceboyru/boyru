@@ -155,7 +155,7 @@ class Monkey(Prey):
 # ==========================================
 # 최강빈 조원이 만든 클래스가 choi_animals.py 에 있다고 가정
 try:
-    from choi_animals import FlyingAnimal
+    from Choi_animals import FlyingAnimal
 except ImportError:
     # FlyingAnimal이 없을 경우 오류를 막기 위해 Animal 상속으로 임시 대체
     FlyingAnimal = Animal 
