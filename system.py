@@ -1,5 +1,3 @@
-import math
-
 import pygame
 import sys
 import random #내가 추가
@@ -10,7 +8,7 @@ from gui import HUD
 from physics import PhysicsEngine
 
 from Choi_animals import Rhino, ElectricEel, ToxicFrog #내가 추가
-from Lee_animals import Capybara
+from Bae import Anaconda
 
 SCREEN_WIDTH  = 1280
 SCREEN_HEIGHT = 720
@@ -37,14 +35,21 @@ def main():
     physics = PhysicsEngine()
 
     animals = []
+    show_fov = False
     
     #내가 추가
     animals.append(Rhino(name="대장코뿔소", coordinate=(400.0, 500.0)))
     animals.append(ToxicFrog(name="화살독개구리", coordinate=(350.0, 450.0)))
-    animals.append(Capybara(name="카파바라", coordinate=(1950.0, 2144.0)))
-    animals[2].facing_angle = math.pi  # 카피바라가 왼쪽을 바라보도록 초기 방향 설정
+    animals.append(Anaconda(name="아나콘다", coordinate=(600.0, 400.0)))
+    i = 0
+    while i <10:
+        rx = int(random.uniform(100.0, 1800.0))
+        ry = int(random.uniform(100.0, 1350.0))
+        if game_map.is_water(rx, ry):
+            animals.append(Anaconda(name=f"아나콘다_{i+1}", coordinate=(rx, ry)))
+            i += 1
     # 전기뱀장어는 물 타일 근처에 스폰하는 것이 자연스럽습니다.
-    animals.append(ElectricEel(name="전기뱀장어A", coordinate=(1925.0, 2144.0)))
+    animals.append(ElectricEel(name="전기뱀장어A", coordinate=(200.0, 200.0)))
 
     # 2. 반복문을 이용해 여러 마리를 랜덤 위치에 대량 스폰하기
     for i in range(5):
@@ -99,6 +104,10 @@ def main():
                         game_map.break_tree(hud.selected_tree)
                         print("나무 파괴 테스트!")
 
+                elif event.key == pygame.K_F4:
+                    show_fov = not show_fov
+                    print(f"시야 표시 {'ON' if show_fov else 'OFF'}")
+
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
                     mx, my = event.pos
@@ -134,6 +143,11 @@ def main():
         for animal in animals:
             if hasattr(animal, 'draw'):
                 animal.draw(screen, camera)
+        
+        if show_fov:
+                for animal in animals:
+                    if hasattr(animal, 'draw_fov_debug'):
+                        animal.draw_fov_debug(screen, camera, color = (80, 80, 0), alpha = 80)
 
         weather.draw(screen)
         hud.draw(screen, weather, camera, game_map, animals)
