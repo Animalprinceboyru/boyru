@@ -325,7 +325,7 @@ class Animal:
 
     # ── 체력 / 스태미나 ─────────────────────────
 
-    def take_damage(self, amount: float, source: str = "unknown"):
+    def take_damage(self, amount: float, source: str = "unknown",attacker: Optional["Animal"] = None):
         if not self.alive:
             return
         self.hp = max(0, self.hp - amount)
@@ -729,6 +729,10 @@ class Prey(Animal):
         self.hide_range = hide_range
         self.flee_speed_mul = flee_speed_mul
         self._hiding_from: Optional[Animal] = None
+        # 💡 [추가] 맹목적 도주(Blind Flee)를 위한 변수 세팅(by 최강빈)
+        self.blind_flee_timer = 0.0
+        self.blind_flee_duration = 1.5  # 1.5초 동안 달리고 멈칫함
+        self.last_predator_pos = None
 
     def detect_predators(self, animals: List[Animal], game_map) -> List[Animal]:
         return [
@@ -738,10 +742,12 @@ class Prey(Animal):
             and self.can_see(a, game_map)
         ]
 
-    def flee_from(self, predator: Animal, dt: float):
+    #by 최강빈
+    def _flee_from_pos(self, pos: Tuple[float, float], dt: float):
+        """특정 좌표(pos)를 등지고 도망칩니다."""
         self.is_fleeing = True
-        dx = self.coordinate[0] - predator.coordinate[0]
-        dy = self.coordinate[1] - predator.coordinate[1]
+        dx = self.coordinate[0] - pos[0]
+        dy = self.coordinate[1] - pos[1]
         dist = math.hypot(dx, dy)
         if dist < 1.0:
             dx, dy = random.uniform(-1, 1), random.uniform(-1, 1)
@@ -750,6 +756,12 @@ class Prey(Animal):
         flee_y = self.coordinate[1] + dy / dist * 200
         self.move(dt, (flee_x, flee_y), self.flee_speed_mul)
         self.use_stamina(10.0 * dt)
+
+    #By 최강빈
+    def flee_from(self, predator: Animal, dt: float):
+        # 기존 로직 하위 호환성을 위해 유지
+        self._flee_from_pos(predator.coordinate, dt)
+    
 
     def try_hide(self, game_map, predator: "Predator") -> bool:
         dx = self.coordinate[0] - predator.coordinate[0]

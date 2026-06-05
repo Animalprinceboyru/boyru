@@ -332,7 +332,7 @@ class Rhino(Animal):
 class ElectricEel(Predator):
     SPECIES_VISION_RANGE: float = 130.0
     SPECIES_VISION_ANGLE: float = 130.0
-    HUNT_TARGETS={"ToxicFrog","Monkey"}
+    HUNT_TARGETS={"Capybara","Monkey"}
     def __init__(self, name: str, coordinate: Tuple[float, float], electric_power: float = 30.0, **kwargs):
         super().__init__(name, coordinate, **kwargs)
         self.electric_power = electric_power
@@ -447,10 +447,45 @@ class ElectricEel(Predator):
                 # 기절 상태가 아니면 원래 Predator의 확률 기반 공격 로직 따름
                 return super().try_attack(target, base_damage, food_value)
         return False
+    
+    def check_competition(self, animals: List[Animal]):
+        """사냥 타겟이 같은 경쟁자(악어)가 있을 경우, 타겟을 서로로 변경해 다투도록 합니다."""
+        # 자신이 사냥 중이 아니거나 타겟이 없으면 종료
+        if not getattr(self, 'is_hunting', False) or self.hunting_target is None:
+            return
+            
+        # 이미 악어와 싸우고 있는 상태라면 중복 실행 방지
+        if self.hunting_target.__class__.__name__ == "Crocodile":
+            return
+
+        for a in animals:
+            if a is self or not a.alive:
+                continue
+
+            # 주변의 동물이 악어(Crocodile)인지 확인
+            if a.__class__.__name__ == "Crocodile":
+                croc_state = getattr(a, '_state', '')
+                croc_target = getattr(a, '_target', None)
+                
+                # 악어도 사냥(돌진, 추격 등) 중이고, 타겟이 전기뱀장어의 타겟과 같다면
+                if croc_state in ("rushing", "chasing", "death_roll") and croc_target is self.hunting_target:
+                    # 일정 거리(예: 250.0 픽셀) 이내로 가까워졌을 때 영역 다툼 발동
+                    if self.distance_to(a) <= 250.0:
+                        print(f"⚡🐊 [영역 다툼] {self.name}와 {a.name}가 {self.hunting_target.name}을(를) 두고 격돌합니다!")
+                        
+                        # 1. 전기뱀장어의 사냥 타겟을 악어로 변경
+                        self.hunting_target = a
+                        
+                        # 2. 악어의 상태를 '추격'으로 강제 변경하고 타겟을 전기뱀장어로 지정
+                        a._set_state("chasing", self)
+                        break
 
     def update(self, dt: float, game_map, weather, animals: List[Animal]):
         super().update(dt, game_map, weather, animals)
-        
+
+        if not self.alive or self.is_stunned:
+            return
+        self.check_competition(animals)
         # 사냥(Hunting) 중 타겟에 접근 시 일정 확률로 전기 공격
         if self.is_hunting and self.hunting_target:
             if self.distance_to(self.hunting_target) <= self.attack_range + 20:
@@ -475,6 +510,7 @@ class ElectricEel(Predator):
 
                     if water_tiles:
                         self.target_coord = random.choice(water_tiles)
+                        
 
 
 # ==========================================
