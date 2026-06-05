@@ -2,6 +2,10 @@ import math
 import random
 import pygame
 from typing import Tuple, Optional, List
+import random
+import math
+import pygame
+from typing import Tuple, Optional, List
 
 from animal import Animal, Predator, Prey, Egg, TILE_SIZE
 
@@ -394,12 +398,6 @@ def _find_shore_positions(game_map, cx, cy, search_radius_tiles=20, max_candidat
                 candidates.append((dist, px, py))
     candidates.sort()
     return [(px, py) for _, px, py in candidates[:max_candidates]]
-
-
-import random
-import math
-import pygame
-from typing import Tuple, Optional, List
 
 from animal import Animal, Predator, Prey
 from map_system import TileType, TILE_SIZE
