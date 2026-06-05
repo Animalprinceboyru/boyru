@@ -370,6 +370,298 @@ class Anaconda(Predator):
                                 (int(sx) - 16, int(sy) - 9, 32, 18), 1)
 
     def __repr__(self):
-        return (f"<Anaconda '{self.name}' hp={self.hp}/{self.max_hp} "
-                f"state={self._state} hidden={self.hidden} "
+        return (f"<Anaconda '{self.name}' hp={self.hp}/{self.max_hp} ")
+                
+
+def _is_water(game_map, tx, ty):
+    t = game_map.get_tile(tx, ty)
+    return t in _WATER_TILES
+
+def _find_shore_positions(game_map, cx, cy, search_radius_tiles=20, max_candidates=12):
+    origin_tx = int(cx // TILE_SIZE)
+    origin_ty = int(cy // TILE_SIZE)
+    candidates = []
+    for dy in range(-search_radius_tiles, search_radius_tiles + 1):
+        for dx in range(-search_radius_tiles, search_radius_tiles + 1):
+            tx, ty = origin_tx + dx, origin_ty + dy
+            if not _is_water(game_map, tx, ty):
+                continue
+            if any(not _is_water(game_map, tx + ndx, ty + ndy)
+                   for ndx, ndy in ((1,0),(-1,0),(0,1),(0,-1))):
+                px = (tx + 0.5) * TILE_SIZE
+                py = (ty + 0.5) * TILE_SIZE
+                dist = math.hypot(px - cx, py - cy)
+                candidates.append((dist, px, py))
+    candidates.sort()
+    return [(px, py) for _, px, py in candidates[:max_candidates]]
+
+
+import random
+import math
+import pygame
+from typing import Tuple, Optional, List
+
+from animal import Animal, Predator, Prey
+from map_system import TileType, TILE_SIZE
+
+_WATER_TILES = (TileType.WATER, TileType.DEEP_WATER)
+
+def _is_water(game_map, tx, ty):
+    t = game_map.get_tile(tx, ty)
+    return t in _WATER_TILES
+
+def _find_shore_positions(game_map, cx, cy, search_radius_tiles=20, max_candidates=12):
+    origin_tx = int(cx // TILE_SIZE)
+    origin_ty = int(cy // TILE_SIZE)
+    candidates = []
+    for dy in range(-search_radius_tiles, search_radius_tiles + 1):
+        for dx in range(-search_radius_tiles, search_radius_tiles + 1):
+            tx, ty = origin_tx + dx, origin_ty + dy
+            if not _is_water(game_map, tx, ty):
+                continue
+            if any(not _is_water(game_map, tx + ndx, ty + ndy)
+                   for ndx, ndy in ((1,0),(-1,0),(0,1),(0,-1))):
+                px = (tx + 0.5) * TILE_SIZE
+                py = (ty + 0.5) * TILE_SIZE
+                dist = math.hypot(px - cx, py - cy)
+                candidates.append((dist, px, py))
+    candidates.sort()
+    return [(px, py) for _, px, py in candidates[:max_candidates]]
+
+
+class Crocodile(Predator):
+    """
+    악어.
+    idle(유영) -> seeking_shore(물가 이동) -> lurking(잠복) -> rushing(기습)
+      -> death_roll(데스롤) -> idle
+      -> chasing(추격) -> idle
+    """
+    SPECIES_VISION_RANGE = 230.0
+    SPECIES_VISION_ANGLE = 110.0
+    minimap_color = (0, 200, 200)
+
+    _IDLE          = "idle"
+    _SEEKING_SHORE = "seeking_shore"
+    _LURKING       = "lurking"
+    _RUSHING       = "rushing"
+    _DEATH_ROLL    = "death_roll"
+    _CHASING       = "chasing"
+
+    def __init__(self, name, coordinate,
+                 water_max_speed=120.0, water_max_accel=260.0,
+                 rush_max_speed=200.0, rush_max_accel=450.0,
+                 land_stamina_drain=12.0,
+                 drink_range=160.0, lurk_timeout=30.0,
+                 death_roll_dps=35.0, death_roll_duration=2.5,
+                 **kwargs):
+        super().__init__(
+            name=name, coordinate=coordinate,
+            attack_range=45.0, hunt_range=260.0,
+            attack_success_rate=0.60, hunger_limit=45.0, chase_speed_mul=1.4,
+            max_speed=water_max_speed, max_accelerate=water_max_accel,
+            hp=200, max_hp=200, max_stamina=130.0, stamina=130.0,
+            environment_status="water",
+            **kwargs,
+        )
+        self.water_max_speed    = water_max_speed
+        self.water_max_accel    = water_max_accel
+        self.rush_max_speed     = rush_max_speed
+        self.rush_max_accel     = rush_max_accel
+        self.land_stamina_drain = land_stamina_drain
+        self.drink_range        = drink_range
+        self.lurk_timeout       = lurk_timeout
+        self.death_roll_dps     = death_roll_dps
+        self.death_roll_duration = death_roll_duration
+
+        self.submerged  = False
+        self._state     = self._IDLE
+        self._target    = None
+        self._shore_pos = None
+        self._lurk_timer = 0.0
+        self._roll_timer = 0.0
+
+    def _set_state(self, state, target=None):
+        self._state      = state
+        self._target     = target
+        self._roll_timer = 0.0
+        self._lurk_timer = 0.0
+        if state not in (self._LURKING, self._SEEKING_SHORE):
+            self.submerged = False
+        if state == self._RUSHING:
+            self.max_speed      = self.rush_max_speed
+            self.max_accelerate = self.rush_max_accel
+        else:
+            self.max_speed      = self.water_max_speed
+            self.max_accelerate = self.water_max_accel
+
+    def _pick_shore(self, game_map):
+        shores = _find_shore_positions(game_map, self.coordinate[0], self.coordinate[1])
+        return shores[0] if shores else None
+
+    def _do_death_roll(self, target, dt):
+        self._roll_timer += dt
+        if target.alive:
+            target.take_damage(self.death_roll_dps * dt,
+                               source=f"{self.name}_death_roll")
+            target.apply_stun(0.3)
+        return self._roll_timer >= self.death_roll_duration
+
+    def _ambush_rate(self, target):
+        base = 0.65
+        b  = 0.15 if self.submerged else 0.0
+        b += (self.hunger / 100.0) * 0.10
+        b += (1.0 - target.hp / target.max_hp) * 0.10
+        b -= (1.0 - self.stamina / self.max_stamina) * 0.15
+        return max(0.05, min(0.95, base + b))
+
+    def _apply_land_drain(self, dt):
+        if self.environment_status != "water":
+            if math.hypot(*self.velocity) > 5.0:
+                self.stamina = max(0.0, self.stamina - self.land_stamina_drain * dt)
+
+    def _update_behavior(self, dt, animals, game_map):
+        s = self._state
+
+        if s == self._IDLE:
+            self.submerged = False
+            self.move(dt)
+            if self.hunger >= self.hunger_limit:
+                shore = self._pick_shore(game_map)
+                if shore:
+                    self._shore_pos = shore
+                    self._set_state(self._SEEKING_SHORE)
+
+        elif s == self._SEEKING_SHORE:
+            if self._shore_pos is None:
+                self._set_state(self._IDLE); return
+            self.move(dt, self._shore_pos)
+            if self.distance_to(self._shore_pos) < TILE_SIZE:
+                self.stop()
+                self.submerged = True
+                self._set_state(self._LURKING)
+            if self.hunger < self.hunger_limit * 0.5:
+                self._set_state(self._IDLE)
+
+        elif s == self._LURKING:
+            self.stop()
+            self.submerged = True
+            self._lurk_timer += dt
+            nearby = [a for a in animals
+                      if isinstance(a, Prey) and a.alive
+                      and self.distance_to(a) <= self.drink_range]
+            if nearby:
+                t = min(nearby, key=lambda a: self.distance_to(a))
+                self._set_state(self._RUSHING, t); return
+            if self.hunger < self.hunger_limit * 0.5:
+                self._set_state(self._IDLE)
+            elif self._lurk_timer >= self.lurk_timeout:
+                shore = self._pick_shore(game_map)
+                if shore and shore != self._shore_pos:
+                    self._shore_pos = shore
+                    self._set_state(self._SEEKING_SHORE)
+                else:
+                    self._set_state(self._IDLE)
+
+        elif s == self._RUSHING:
+            t = self._target
+            if t is None or not t.alive:
+                self._set_state(self._IDLE); return
+            self.move(dt, t.coordinate, 1.0)
+            if self.distance_to(t) <= self.attack_range:
+                if random.random() < self._ambush_rate(t):
+                    self._set_state(self._DEATH_ROLL, t)
+                else:
+                    print(f"{self.name} 기습 실패 -> 추격")
+                    self._set_state(self._CHASING, t)
+                return
+            if self.distance_to(t) > self.hunt_range:
+                self._set_state(self._IDLE)
+
+        elif s == self._DEATH_ROLL:
+            t = self._target
+            if t is None:
+                self._set_state(self._IDLE); return
+            self.stop()
+            done = self._do_death_roll(t, dt)
+            if not t.alive:
+                self.eat(55.0)
+                self._set_state(self._IDLE)
+            elif done:
+                self._set_state(self._CHASING, t)
+
+        elif s == self._CHASING:
+            t = self._target
+            if t is None or not t.alive:
+                self._set_state(self._IDLE); return
+            if not self.can_see(t, game_map):
+                self._set_state(self._IDLE); return
+            self.move(dt, t.coordinate, self.chase_speed_mul)
+            self.use_stamina(12.0 * dt)
+            if self.distance_to(t) <= self.attack_range:
+                if random.random() < self.attack_success_rate:
+                    self.attack(t, base_damage=40.0)
+                    if not t.alive:
+                        self.eat(50.0)
+                        self._set_state(self._IDLE)
+            if self.distance_to(t) > self.hunt_range or self.stamina <= 0:
+                self._set_state(self._IDLE)
+
+    def update(self, dt, game_map, weather, animals):
+        super().update(dt, game_map, weather, animals)
+        if not self.alive:
+            return
+        self.stop_hunt()
+        self._apply_land_drain(dt)
+        if (self.environment_status != "water"
+                and self._state == self._LURKING):
+            self._set_state(self._IDLE)
+        self._update_behavior(dt, animals, game_map)
+
+    def make_child(self):
+        return Crocodile(
+            name=f"Crocodile_{random.randint(1000,9999)}",
+            coordinate=tuple(self.coordinate),
+        )
+
+    def draw(self, screen, camera):
+        if not self.alive:
+            return
+        sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
+
+        if self._state == self._DEATH_ROLL:
+            body = (160, 40, 20)
+        elif self.submerged:
+            body = (15, 35, 15)
+        elif self._state in (self._RUSHING, self._CHASING):
+            body = (80, 130, 40)
+        else:
+            body = (55, 100, 45)
+
+        pygame.draw.ellipse(screen, body,
+                            (int(sx)-18, int(sy)-8, 36, 16))
+        hx = int(sx + math.cos(self.facing_angle) * 16)
+        hy = int(sy + math.sin(self.facing_angle) * 16)
+        pygame.draw.circle(screen, body, (hx, hy), 7)
+
+        if self._state == self._DEATH_ROLL:
+            pygame.draw.circle(screen, (200, 80, 40), (int(sx), int(sy)), 24, 2)
+        if self.submerged:
+            pygame.draw.ellipse(screen, (30, 140, 160),
+                                (int(sx)-20, int(sy)-10, 40, 20), 1)
+
+        bw = 32
+        bx, by = int(sx) - bw//2, int(sy) - 20
+        pygame.draw.rect(screen, (80,0,0),    (bx, by, bw, 3))
+        pygame.draw.rect(screen, (0,200,60),
+                         (bx, by, int(bw * self.hp / self.max_hp), 3))
+        if self.is_stunned:
+            pygame.draw.circle(screen, (255,255,0),   (int(sx)+14, int(sy)-14), 3)
+        if self.is_poisoned:
+            pygame.draw.circle(screen, (100,255,100), (int(sx)-14, int(sy)-14), 3)
+
+    def __repr__(self):
+        return (f"<Crocodile '{self.name}' hp={self.hp}/{self.max_hp} "
+                f"state={self._state} submerged={self.submerged} "
+                f"hunger={self.hunger:.0f} "
                 f"pos=({self.coordinate[0]:.0f},{self.coordinate[1]:.0f})>")
+

@@ -93,7 +93,7 @@ class HUD:
                     pygame.draw.rect(self.minimap, color, (mx_, my_, mw, mh))
 
             for animal in animals:
-                if hasattr(animal, 'coordinate'):
+                if getattr(animal,'alive',False) and hasattr(animal, 'coordinate'):
                     ax = int(animal.coordinate[0] * sx)
                     ay = int(animal.coordinate[1] * sy)
                     c  = getattr(animal, 'minimap_color', COLOR_HIGHLIGHT)

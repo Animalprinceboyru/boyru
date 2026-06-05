@@ -12,7 +12,9 @@ class Capybara(Prey):
     SPECIES_VISION_ANGLE = 270.0
 
     def __init__(self, name: str, coordinate: Tuple[float, float], **kwargs):
-        super().__init__(name, coordinate, danger_range=150.0, escape_success_rate=0.5, **kwargs)
+        # 1. 여기서 escape_success_rate=0.5 를 제거합니다.
+        super().__init__(name, coordinate, danger_range=150.0, **kwargs)
+        
         self.stress_level = 0.0
         self.group_size = 1
         
@@ -32,7 +34,7 @@ class Capybara(Prey):
             self.stress_level = max(0.0, self.stress_level - 1.0)
             self.escape_success_rate = min(0.95, 0.5 + 0.1 * len(nearby_capybaras))
 
-    def flee_to_water(self, game_map, dt: float):
+    def flee_to_water(self, game_map, dt: float,predator:Animal):
         """가까운 물가 방향을 찾아 우선적으로 도망칩니다."""
         tx, ty = int(self.coordinate[0] // TILE_SIZE), int(self.coordinate[1] // TILE_SIZE)
         
@@ -51,9 +53,9 @@ class Capybara(Prey):
                             water_target = (nx * TILE_SIZE + TILE_SIZE/2, ny * TILE_SIZE + TILE_SIZE/2)
                             
         if water_target:
-            self.move(dt, water_target, self._flee_speed_mul * self.escape_success_rate)
+            self.move(dt, water_target, self.flee_speed_mul * self.escape_success_rate)
         else:
-            self.move(dt)
+            self.flee_from(predator, dt)
 
     def update(self, dt: float, game_map, weather, animals: List[Animal]):
         # Prey.update를 부르면 이중 이동이 발생하므로 Animal.update를 호출
@@ -67,7 +69,14 @@ class Capybara(Prey):
         if predators:
             self.predator_detected = True
             self.stress_level = min(100.0, self.stress_level + 10.0 * dt)
-            self.flee_to_water(game_map, dt)
+            # [추가] 가장 가까운 포식자 찾기
+            closest = min(predators, key=lambda p: self.distance_to(p))
+            
+            # 이미 물속이라면 뱀장어 반대 방향으로 도망치기
+            if getattr(self, 'environment_status', '') == 'water':
+                self.flee_from(closest, dt)
+            else:
+                self.flee_to_water(game_map, dt, closest)
         else:
             self.predator_detected = False
             self.stress_level = max(0.0, self.stress_level - 5.0 * dt)

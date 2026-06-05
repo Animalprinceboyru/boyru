@@ -1,3 +1,5 @@
+import math
+
 import pygame
 import sys
 import random #내가 추가
@@ -8,6 +10,7 @@ from gui import HUD
 from physics import PhysicsEngine
 
 from Choi_animals import Rhino, ElectricEel, ToxicFrog #내가 추가
+from Lee_animals import Capybara
 
 SCREEN_WIDTH  = 1280
 SCREEN_HEIGHT = 720
@@ -38,9 +41,10 @@ def main():
     #내가 추가
     animals.append(Rhino(name="대장코뿔소", coordinate=(400.0, 500.0)))
     animals.append(ToxicFrog(name="화살독개구리", coordinate=(350.0, 450.0)))
-    
+    animals.append(Capybara(name="카파바라", coordinate=(1950.0, 2144.0)))
+    animals[2].facing_angle = math.pi  # 카피바라가 왼쪽을 바라보도록 초기 방향 설정
     # 전기뱀장어는 물 타일 근처에 스폰하는 것이 자연스럽습니다.
-    animals.append(ElectricEel(name="전기뱀장어A", coordinate=(200.0, 200.0)))
+    animals.append(ElectricEel(name="전기뱀장어A", coordinate=(1925.0, 2144.0)))
 
     # 2. 반복문을 이용해 여러 마리를 랜덤 위치에 대량 스폰하기
     for i in range(5):

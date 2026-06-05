@@ -332,10 +332,70 @@ class Rhino(Animal):
 class ElectricEel(Predator):
     SPECIES_VISION_RANGE: float = 130.0
     SPECIES_VISION_ANGLE: float = 130.0
+    HUNT_TARGETS={"Capybara","Monkey"}
     def __init__(self, name: str, coordinate: Tuple[float, float], electric_power: float = 30.0, **kwargs):
         super().__init__(name, coordinate, **kwargs)
         self.electric_power = electric_power
         self.max_speed = 70.0
+        # 💡 1. 여기서 코뿔소 전용 이미지를 설정
+        self.image_path = "eel.png"  # 코뿔소 이미지 파일명
+        self.image = None
+        
+        # 이미지가 캐시에 없으면 최초 1회 로드
+        if self.image_path not in CHOI_IMAGE_CACHE:
+            try:
+                loaded_img = pygame.image.load(self.image_path).convert_alpha()
+                CHOI_IMAGE_CACHE[self.image_path] = loaded_img
+            except Exception as e:
+                print(f"⚠️ {name} 이미지 로드 실패: {e}")
+                # 💡 [핵심] 실패하더라도 딕셔너리에 None을 넣어줘야함
+                CHOI_IMAGE_CACHE[self.image_path] = None
+        orig_img = CHOI_IMAGE_CACHE[self.image_path]
+        orig_w, orig_h = orig_img.get_size() # 원본 이미지의 가로, 세로 픽셀
+            
+        # 동물의 크기(size)를 기준으로 최대 렌더링 크기 설정
+        target_max_size = int(self.size * 2.5)
+            
+        # 가로와 세로 중 더 긴 쪽을 기준으로 축소/확대 비율(scale_factor)을 계산
+        scale_factor = target_max_size / max(orig_w, orig_h)
+            
+        # 구한 비율을 가로, 세로에 똑같이 곱해주어 비율 유지
+        new_w = int(orig_w * scale_factor)
+        new_h = int(orig_h * scale_factor)
+            
+        # 새로운 가로, 세로 크기로 스케일링
+        self.image = pygame.transform.scale(orig_img, (new_w, new_h))
+
+    def draw(self, screen: pygame.Surface, camera):
+        if not self.alive:
+            return
+
+        if self.image:
+            # 만약 이미지가 정상적으로 로드되었다면 이미지로 그림
+            # 화면 좌표 계산
+            sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
+            
+            # 💡 [핵심 수정] 이미지의 현재 가로, 세로 길이에 각각 카메라 줌 비율을 곱해줍니다!
+            new_w = int(self.image.get_width() * camera.zoom)
+            new_h = int(self.image.get_height() * camera.zoom)
+                
+            # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
+            scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
+                
+            # 이미지 출력 (중심점 맞추기)
+            rect = scaled_image.get_rect(center=(sx, sy))
+            screen.blit(scaled_image, rect)
+                
+            # 체력바 렌더링
+            hp_ratio = self.hp / self.max_hp
+            bar_w = 30 * camera.zoom
+            bar_h = 4 * camera.zoom
+            # 체력바 위치도 이미지 세로 크기에 맞춰 유동적으로 조절
+            pygame.draw.rect(screen, (220, 60, 60), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w, bar_h))
+            pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w * hp_ratio, bar_h))
+        else:
+            # 이미지 로드 실패 시 기본 원으로 그리기(부모 클래스)
+            super().draw(screen, camera)
     
     def move(self, dt: float, target: Optional[Tuple[float, float]] = None, speed_multiplier: float = 1.0):
         """environment_status를 이용해 물에 있는지 판단하고 속도를 조정합니다."""
@@ -446,16 +506,70 @@ class ElectricEel(Predator):
                 # 기절 상태가 아니면 원래 Predator의 확률 기반 공격 로직 따름
                 return super().try_attack(target, base_damage, food_value)
         return False
+    
+    def check_competition(self, animals: List[Animal]):
+        """사냥 타겟이 같은 경쟁자(악어)가 있을 경우, 타겟을 서로로 변경해 다투도록 합니다."""
+        # 자신이 사냥 중이 아니거나 타겟이 없으면 종료
+        if not getattr(self, 'is_hunting', False) or self.hunting_target is None:
+            return
+            
+        # 이미 악어와 싸우고 있는 상태라면 중복 실행 방지
+        if self.hunting_target.__class__.__name__ == "Crocodile":
+            return
+
+        for a in animals:
+            if a is self or not a.alive:
+                continue
+
+            # 주변의 동물이 악어(Crocodile)인지 확인
+            if a.__class__.__name__ == "Crocodile":
+                croc_state = getattr(a, '_state', '')
+                croc_target = getattr(a, '_target', None)
+                
+                # 악어도 사냥(돌진, 추격 등) 중이고, 타겟이 전기뱀장어의 타겟과 같다면
+                if croc_state in ("rushing", "chasing", "death_roll") and croc_target is self.hunting_target:
+                    # 일정 거리(예: 250.0 픽셀) 이내로 가까워졌을 때 영역 다툼 발동
+                    if self.distance_to(a) <= 250.0:
+                        print(f"⚡🐊 [영역 다툼] {self.name}와 {a.name}가 {self.hunting_target.name}을(를) 두고 격돌합니다!")
+                        
+                        # 1. 전기뱀장어의 사냥 타겟을 악어로 변경
+                        self.hunting_target = a
+                        
+                        # 2. 악어의 상태를 '추격'으로 강제 변경하고 타겟을 전기뱀장어로 지정
+                        a._set_state("chasing", self)
+                        break
 
     def update(self, dt: float, game_map, weather, animals: List[Animal]):
         super().update(dt, game_map, weather, animals)
-        
+
+        if not self.alive or self.is_stunned:
+            return
+        self.check_competition(animals)
         # 사냥(Hunting) 중 타겟에 접근 시 일정 확률로 전기 공격
         if self.is_hunting and self.hunting_target:
             if self.distance_to(self.hunting_target) <= self.attack_range + 20:
                 if random.random() < 0.05: 
                     # 수정됨: weather 객체도 함께 넘겨주어 날씨 시너지 확인
                     self.electric_attack(self.hunting_target, animals, weather)
+        # 💡 [추가됨] 평상시 배회 (물 타일만 찾아서 이동)
+        if not getattr(self, 'is_hunting', False) and not getattr(self, 'is_fleeing', False):
+            if not getattr(self, 'target_coord', None):
+                if random.random() < 0.05:
+                    from map_system import TILE_SIZE
+                    cx = int(self.coordinate[0] // TILE_SIZE)
+                    cy = int(self.coordinate[1] // TILE_SIZE)
+                    
+                    # 현재 위치 주변 10x10 범위 내의 물 타일을 수집
+                    water_tiles = []
+                    for dy in range(-10, 11):
+                        for dx in range(-10, 11):
+                            tx, ty = cx + dx, cy + dy
+                            if game_map.is_water(tx, ty):
+                                water_tiles.append((tx, ty))
+
+                    if water_tiles:
+                        self.target_coord = random.choice(water_tiles)
+                        
 
 
 # ==========================================
@@ -469,6 +583,66 @@ class ToxicFrog(Animal):
         super().__init__(name, coordinate, **kwargs)
         self.poison_amount = poison_amount
         self.max_speed = 45.0
+
+        # 💡 1. 여기서 코뿔소 전용 이미지를 설정
+        self.image_path = "frog.png"  # 코뿔소 이미지 파일명
+        self.image = None
+        
+        # 이미지가 캐시에 없으면 최초 1회 로드
+        if self.image_path not in CHOI_IMAGE_CACHE:
+            try:
+                loaded_img = pygame.image.load(self.image_path).convert_alpha()
+                CHOI_IMAGE_CACHE[self.image_path] = loaded_img
+            except Exception as e:
+                print(f"⚠️ {name} 이미지 로드 실패: {e}")
+                # 💡 [핵심] 실패하더라도 딕셔너리에 None을 넣어줘야함
+                CHOI_IMAGE_CACHE[self.image_path] = None
+        orig_img = CHOI_IMAGE_CACHE[self.image_path]
+        orig_w, orig_h = orig_img.get_size() # 원본 이미지의 가로, 세로 픽셀
+            
+        # 동물의 크기(size)를 기준으로 최대 렌더링 크기 설정
+        target_max_size = int(self.size * 2.5)
+            
+        # 가로와 세로 중 더 긴 쪽을 기준으로 축소/확대 비율(scale_factor)을 계산
+        scale_factor = target_max_size / max(orig_w, orig_h)
+            
+        # 구한 비율을 가로, 세로에 똑같이 곱해주어 비율 유지
+        new_w = int(orig_w * scale_factor)
+        new_h = int(orig_h * scale_factor)
+            
+        # 새로운 가로, 세로 크기로 스케일링
+        self.image = pygame.transform.scale(orig_img, (new_w, new_h))
+    
+    def draw(self, screen: pygame.Surface, camera):
+        if not self.alive:
+            return
+
+        if self.image:
+            # 만약 이미지가 정상적으로 로드되었다면 이미지로 그림
+            # 화면 좌표 계산
+            sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
+            
+            # 💡 [핵심 수정] 이미지의 현재 가로, 세로 길이에 각각 카메라 줌 비율을 곱해줍니다!
+            new_w = int(self.image.get_width() * camera.zoom)
+            new_h = int(self.image.get_height() * camera.zoom)
+                
+            # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
+            scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
+                
+            # 이미지 출력 (중심점 맞추기)
+            rect = scaled_image.get_rect(center=(sx, sy))
+            screen.blit(scaled_image, rect)
+                
+            # 체력바 렌더링
+            hp_ratio = self.hp / self.max_hp
+            bar_w = 30 * camera.zoom
+            bar_h = 4 * camera.zoom
+            # 체력바 위치도 이미지 세로 크기에 맞춰 유동적으로 조절
+            pygame.draw.rect(screen, (220, 60, 60), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w, bar_h))
+            pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w * hp_ratio, bar_h))
+        else:
+            # 이미지 로드 실패 시 기본 원으로 그리기(부모 클래스)
+            super().draw(screen, camera)
     
     def make_child(self):
         breed_cost = 15.0
@@ -539,3 +713,20 @@ class ToxicFrog(Animal):
                     elif dist <= 120.0 and self.stamina >= 10.0:
                         self.jump(dt, target=a.coordinate)
                         break
+        # 💡 [추가됨] 평상시 배회 (물속이 아닐 때 확률적으로 점프)
+        if not getattr(self, 'is_hunting', False) and not getattr(self, 'is_fleeing', False):
+            if not getattr(self, 'target_coord', None):
+                if random.random() < 0.05: 
+                    rx = self.coordinate[0] + random.uniform(-150.0, 150.0)
+                    ry = self.coordinate[1] + random.uniform(-150.0, 150.0)
+                    self.target_coord = [rx, ry]
+            
+            if getattr(self, 'target_coord', None):
+                # 물속이 아니고, 스태미나가 충분하며, 일정 확률(예: 3%)일 때 점프 발동!
+                if self.environment_status != "water" and self.stamina >= 10.0 and random.random() < 0.03:
+                    self.jump(dt, target=self.target_coord)
+                else:
+                    self.move(dt, target=self.target_coord, speed_multiplier=1.0)
+                
+                if self.distance_to(self.target_coord) < 10.0:
+                    self.target_coord = None
