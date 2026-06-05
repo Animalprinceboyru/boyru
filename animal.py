@@ -140,12 +140,12 @@ class Animal:
     def __init__(
         self,
         name: str,
-        coordinate: List[float,float],
+        coordinate: Tuple[float, float],
         hp: int = 100,
         max_hp: int = 100,
         stamina: float = 100.0,
         max_stamina: float = 100.0,
-        max_speed: float = 80000.0,
+        max_speed: float = 80.0,
         hunger: float = 0.0,
         thirst: float = 0.0,
         detection_range: float = 150.0,
@@ -154,8 +154,7 @@ class Animal:
         sex: str = "male",
         home_coordinate: Optional[Tuple[float, float]] = None,
         environment_status: str = "land",
-        max_accelerate: float = 20000.0,
-        size: float=100.0,
+        max_accelerate: float = 200.0,
     ):
         # 기본 정보
         self.name = name
@@ -171,6 +170,8 @@ class Animal:
         # 이동
         self.max_accelerate = max_accelerate
         self.max_speed = max_speed
+        self.friction_land  = 6.0   # 육지 마찰력 — 하위 클래스에서 덮어쓰기 가능
+        self.friction_water = 2.0   # 물속 마찰력 (미끄러움) — 하위 클래스에서 덮어쓰기 가능
 
         # 욕구
         self.hunger = hunger
@@ -224,9 +225,6 @@ class Animal:
         # 생존
         self.alive = True
 
-        #크기
-        self.size = size
-
     # ── 가속도 (hunger / stamina에 따라 감소) ────
 
     @property
@@ -259,7 +257,8 @@ class Animal:
         return [a for a in animals if a is not self and self.can_see(a, game_map)]
 
     def _update_facing(self):
-        if math.hypot(*self.velocity) > 5.0:
+        spd = math.hypot(*self.velocity)
+        if spd > 0.1:
             self.facing_angle = math.atan2(self.velocity[1], self.velocity[0])
 
     def draw_fov_debug(self, screen: pygame.Surface, camera,
@@ -316,16 +315,18 @@ class Animal:
         if spd < 1.0:
             self.velocity = [0.0, 0.0]
             return
-        new_spd = max(0.0, spd - self.accelerate * dt)
-        self.velocity[0] = self.velocity[0] / spd * new_spd
-        self.velocity[1] = self.velocity[1] / spd * new_spd
+        friction = (self.friction_water if self.environment_status == "water"
+                    else self.friction_land)
+        factor = max(0.0, 1.0 - friction * dt)
+        self.velocity[0] *= factor
+        self.velocity[1] *= factor
 
     def stop(self):
         self.velocity = [0.0, 0.0]
 
     # ── 체력 / 스태미나 ─────────────────────────
 
-    def take_damage(self, amount: float, source: str = "unknown",attacker: Optional["Animal"] = None):
+    def take_damage(self, amount: float, source: str = "unknown"):
         if not self.alive:
             return
         self.hp = max(0, self.hp - amount)
@@ -729,10 +730,6 @@ class Prey(Animal):
         self.hide_range = hide_range
         self.flee_speed_mul = flee_speed_mul
         self._hiding_from: Optional[Animal] = None
-        # 💡 [추가] 맹목적 도주(Blind Flee)를 위한 변수 세팅(by 최강빈)
-        self.blind_flee_timer = 0.0
-        self.blind_flee_duration = 1.5  # 1.5초 동안 달리고 멈칫함
-        self.last_predator_pos = None
 
     def detect_predators(self, animals: List[Animal], game_map) -> List[Animal]:
         return [
@@ -742,12 +739,10 @@ class Prey(Animal):
             and self.can_see(a, game_map)
         ]
 
-    #by 최강빈
-    def _flee_from_pos(self, pos: Tuple[float, float], dt: float):
-        """특정 좌표(pos)를 등지고 도망칩니다."""
+    def flee_from(self, predator: Animal, dt: float):
         self.is_fleeing = True
-        dx = self.coordinate[0] - pos[0]
-        dy = self.coordinate[1] - pos[1]
+        dx = self.coordinate[0] - predator.coordinate[0]
+        dy = self.coordinate[1] - predator.coordinate[1]
         dist = math.hypot(dx, dy)
         if dist < 1.0:
             dx, dy = random.uniform(-1, 1), random.uniform(-1, 1)
@@ -756,12 +751,6 @@ class Prey(Animal):
         flee_y = self.coordinate[1] + dy / dist * 200
         self.move(dt, (flee_x, flee_y), self.flee_speed_mul)
         self.use_stamina(10.0 * dt)
-
-    #By 최강빈
-    def flee_from(self, predator: Animal, dt: float):
-        # 기존 로직 하위 호환성을 위해 유지
-        self._flee_from_pos(predator.coordinate, dt)
-    
 
     def try_hide(self, game_map, predator: "Predator") -> bool:
         dx = self.coordinate[0] - predator.coordinate[0]
