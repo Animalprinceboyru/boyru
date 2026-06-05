@@ -337,6 +337,65 @@ class ElectricEel(Predator):
         super().__init__(name, coordinate, **kwargs)
         self.electric_power = electric_power
         self.max_speed = 70.0
+        # 💡 1. 여기서 코뿔소 전용 이미지를 설정
+        self.image_path = "eel.png"  # 코뿔소 이미지 파일명
+        self.image = None
+        
+        # 이미지가 캐시에 없으면 최초 1회 로드
+        if self.image_path not in CHOI_IMAGE_CACHE:
+            try:
+                loaded_img = pygame.image.load(self.image_path).convert_alpha()
+                CHOI_IMAGE_CACHE[self.image_path] = loaded_img
+            except Exception as e:
+                print(f"⚠️ {name} 이미지 로드 실패: {e}")
+                # 💡 [핵심] 실패하더라도 딕셔너리에 None을 넣어줘야함
+                CHOI_IMAGE_CACHE[self.image_path] = None
+        orig_img = CHOI_IMAGE_CACHE[self.image_path]
+        orig_w, orig_h = orig_img.get_size() # 원본 이미지의 가로, 세로 픽셀
+            
+        # 동물의 크기(size)를 기준으로 최대 렌더링 크기 설정
+        target_max_size = int(self.size * 2.5)
+            
+        # 가로와 세로 중 더 긴 쪽을 기준으로 축소/확대 비율(scale_factor)을 계산
+        scale_factor = target_max_size / max(orig_w, orig_h)
+            
+        # 구한 비율을 가로, 세로에 똑같이 곱해주어 비율 유지
+        new_w = int(orig_w * scale_factor)
+        new_h = int(orig_h * scale_factor)
+            
+        # 새로운 가로, 세로 크기로 스케일링
+        self.image = pygame.transform.scale(orig_img, (new_w, new_h))
+
+    def draw(self, screen: pygame.Surface, camera):
+        if not self.alive:
+            return
+
+        if self.image:
+            # 만약 이미지가 정상적으로 로드되었다면 이미지로 그림
+            # 화면 좌표 계산
+            sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
+            
+            # 💡 [핵심 수정] 이미지의 현재 가로, 세로 길이에 각각 카메라 줌 비율을 곱해줍니다!
+            new_w = int(self.image.get_width() * camera.zoom)
+            new_h = int(self.image.get_height() * camera.zoom)
+                
+            # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
+            scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
+                
+            # 이미지 출력 (중심점 맞추기)
+            rect = scaled_image.get_rect(center=(sx, sy))
+            screen.blit(scaled_image, rect)
+                
+            # 체력바 렌더링
+            hp_ratio = self.hp / self.max_hp
+            bar_w = 30 * camera.zoom
+            bar_h = 4 * camera.zoom
+            # 체력바 위치도 이미지 세로 크기에 맞춰 유동적으로 조절
+            pygame.draw.rect(screen, (220, 60, 60), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w, bar_h))
+            pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w * hp_ratio, bar_h))
+        else:
+            # 이미지 로드 실패 시 기본 원으로 그리기(부모 클래스)
+            super().draw(screen, camera)
     
     def move(self, dt: float, target: Optional[Tuple[float, float]] = None, speed_multiplier: float = 1.0):
         """environment_status를 이용해 물에 있는지 판단하고 속도를 조정합니다."""
@@ -524,6 +583,66 @@ class ToxicFrog(Animal):
         super().__init__(name, coordinate, **kwargs)
         self.poison_amount = poison_amount
         self.max_speed = 45.0
+
+        # 💡 1. 여기서 코뿔소 전용 이미지를 설정
+        self.image_path = "frog.png"  # 코뿔소 이미지 파일명
+        self.image = None
+        
+        # 이미지가 캐시에 없으면 최초 1회 로드
+        if self.image_path not in CHOI_IMAGE_CACHE:
+            try:
+                loaded_img = pygame.image.load(self.image_path).convert_alpha()
+                CHOI_IMAGE_CACHE[self.image_path] = loaded_img
+            except Exception as e:
+                print(f"⚠️ {name} 이미지 로드 실패: {e}")
+                # 💡 [핵심] 실패하더라도 딕셔너리에 None을 넣어줘야함
+                CHOI_IMAGE_CACHE[self.image_path] = None
+        orig_img = CHOI_IMAGE_CACHE[self.image_path]
+        orig_w, orig_h = orig_img.get_size() # 원본 이미지의 가로, 세로 픽셀
+            
+        # 동물의 크기(size)를 기준으로 최대 렌더링 크기 설정
+        target_max_size = int(self.size * 2.5)
+            
+        # 가로와 세로 중 더 긴 쪽을 기준으로 축소/확대 비율(scale_factor)을 계산
+        scale_factor = target_max_size / max(orig_w, orig_h)
+            
+        # 구한 비율을 가로, 세로에 똑같이 곱해주어 비율 유지
+        new_w = int(orig_w * scale_factor)
+        new_h = int(orig_h * scale_factor)
+            
+        # 새로운 가로, 세로 크기로 스케일링
+        self.image = pygame.transform.scale(orig_img, (new_w, new_h))
+    
+    def draw(self, screen: pygame.Surface, camera):
+        if not self.alive:
+            return
+
+        if self.image:
+            # 만약 이미지가 정상적으로 로드되었다면 이미지로 그림
+            # 화면 좌표 계산
+            sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
+            
+            # 💡 [핵심 수정] 이미지의 현재 가로, 세로 길이에 각각 카메라 줌 비율을 곱해줍니다!
+            new_w = int(self.image.get_width() * camera.zoom)
+            new_h = int(self.image.get_height() * camera.zoom)
+                
+            # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
+            scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
+                
+            # 이미지 출력 (중심점 맞추기)
+            rect = scaled_image.get_rect(center=(sx, sy))
+            screen.blit(scaled_image, rect)
+                
+            # 체력바 렌더링
+            hp_ratio = self.hp / self.max_hp
+            bar_w = 30 * camera.zoom
+            bar_h = 4 * camera.zoom
+            # 체력바 위치도 이미지 세로 크기에 맞춰 유동적으로 조절
+            pygame.draw.rect(screen, (220, 60, 60), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w, bar_h))
+            pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w * hp_ratio, bar_h))
+        else:
+            # 이미지 로드 실패 시 기본 원으로 그리기(부모 클래스)
+            super().draw(screen, camera)
     
     def make_child(self):
         breed_cost = 15.0
