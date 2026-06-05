@@ -332,6 +332,7 @@ class Rhino(Animal):
 class ElectricEel(Predator):
     SPECIES_VISION_RANGE: float = 130.0
     SPECIES_VISION_ANGLE: float = 130.0
+    HUNT_TARGETS={"ToxicFrog","Monkey"}
     def __init__(self, name: str, coordinate: Tuple[float, float], electric_power: float = 30.0, **kwargs):
         super().__init__(name, coordinate, **kwargs)
         self.electric_power = electric_power
@@ -456,6 +457,24 @@ class ElectricEel(Predator):
                 if random.random() < 0.05: 
                     # 수정됨: weather 객체도 함께 넘겨주어 날씨 시너지 확인
                     self.electric_attack(self.hunting_target, animals, weather)
+        # 💡 [추가됨] 평상시 배회 (물 타일만 찾아서 이동)
+        if not getattr(self, 'is_hunting', False) and not getattr(self, 'is_fleeing', False):
+            if not getattr(self, 'target_coord', None):
+                if random.random() < 0.05:
+                    from map_system import TILE_SIZE
+                    cx = int(self.coordinate[0] // TILE_SIZE)
+                    cy = int(self.coordinate[1] // TILE_SIZE)
+                    
+                    # 현재 위치 주변 10x10 범위 내의 물 타일을 수집
+                    water_tiles = []
+                    for dy in range(-10, 11):
+                        for dx in range(-10, 11):
+                            tx, ty = cx + dx, cy + dy
+                            if game_map.is_water(tx, ty):
+                                water_tiles.append((tx, ty))
+
+                    if water_tiles:
+                        self.target_coord = random.choice(water_tiles)
 
 
 # ==========================================
@@ -539,3 +558,20 @@ class ToxicFrog(Animal):
                     elif dist <= 120.0 and self.stamina >= 10.0:
                         self.jump(dt, target=a.coordinate)
                         break
+        # 💡 [추가됨] 평상시 배회 (물속이 아닐 때 확률적으로 점프)
+        if not getattr(self, 'is_hunting', False) and not getattr(self, 'is_fleeing', False):
+            if not getattr(self, 'target_coord', None):
+                if random.random() < 0.05: 
+                    rx = self.coordinate[0] + random.uniform(-150.0, 150.0)
+                    ry = self.coordinate[1] + random.uniform(-150.0, 150.0)
+                    self.target_coord = [rx, ry]
+            
+            if getattr(self, 'target_coord', None):
+                # 물속이 아니고, 스태미나가 충분하며, 일정 확률(예: 3%)일 때 점프 발동!
+                if self.environment_status != "water" and self.stamina >= 10.0 and random.random() < 0.03:
+                    self.jump(dt, target=self.target_coord)
+                else:
+                    self.move(dt, target=self.target_coord, speed_multiplier=1.0)
+                
+                if self.distance_to(self.target_coord) < 10.0:
+                    self.target_coord = None
