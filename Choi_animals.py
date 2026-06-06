@@ -3,6 +3,7 @@ import random
 import math
 from typing import Tuple, Optional, List
 from animal import Animal, Predator, Egg
+from map_system import TileType
 
 
 CHOI_IMAGE_CACHE={}
@@ -139,6 +140,8 @@ class Rhino(Animal):
         super().__init__(name, coordinate, **kwargs)
         self.crash_power = crash_power
         self.max_speed = 90.0
+        self.size=random.uniform(100,200)
+        
         
         # 돌진 상태 관리를 위한 변수
         self.is_charging = False
@@ -308,12 +311,16 @@ class Rhino(Animal):
                                         self.coordinate[1] - self.charge_target_coord[1])
             if dist_to_target < 10.0:
                 self._stop_charge()
+        
         if not getattr(self, 'is_hunting', False) and not getattr(self, 'is_fleeing', False):
             # 1. 목표 좌표가 없다면 낮은 확률(약 2%)로 새로운 랜덤 목표지점 생성
             if not getattr(self, 'target_coord', None):
                 if random.random() < 0.5: 
                     rx = self.coordinate[0] + random.uniform(-2000.0, 2000.0)
                     ry = self.coordinate[1] + random.uniform(-2000.0, 2000.0)
+                    # 👇 이 두 줄 추가 (맵 밖으로 벗어나지 않게 자르기)
+                    rx = max(0.0, min(float(game_map.pixel_width), rx))
+                    ry = max(0.0, min(float(game_map.pixel_height), ry))
                     self.target_coord = [rx, ry]
             
             # 2. 목표 좌표가 생겼다면 그곳으로 이동
@@ -342,8 +349,9 @@ class ElectricEel(Predator):
         super().__init__(name, coordinate, **kwargs)
         self.electric_power = electric_power
         self.max_speed = 70.0
-        # 💡 1. 여기서 코뿔소 전용 이미지를 설정
-        self.image_path = "eel.png"  # 코뿔소 이미지 파일명
+        self.size=random.uniform(80,140)
+        # 💡 1. 여기서 뱀장어 전용 이미지를 설정
+        self.image_path = "eel.png"  # 뱀장어 이미지 파일명
         self.image = None
         
         # 이미지가 캐시에 없으면 최초 1회 로드
@@ -386,6 +394,8 @@ class ElectricEel(Predator):
                 
             # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
             scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
+            scaled_image = pygame.transform.flip(scaled_image, True, False) # 뱀장어는 이미지 바라보는 방향이 반대라 좌우 반전
+            scaled_image = pygame.transform.rotate(scaled_image, 20) # 뱀장어는 살짝 기울어져 있음
 
             # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
             angle_deg = math.degrees(-self.facing_angle)
@@ -560,24 +570,42 @@ class ElectricEel(Predator):
                 if random.random() < 0.05: 
                     # 수정됨: weather 객체도 함께 넘겨주어 날씨 시너지 확인
                     self.electric_attack(self.hunting_target, animals, weather)
-        # 💡 [추가됨] 평상시 배회 (물 타일만 찾아서 이동)
+        
+        # 평상시 배회 (물 타일 혹은 육지 찾아서 이동)
         if not getattr(self, 'is_hunting', False) and not getattr(self, 'is_fleeing', False):
             if not getattr(self, 'target_coord', None):
                 if random.random() < 0.05:
-                    from map_system import TILE_SIZE
-                    cx = int(self.coordinate[0] // TILE_SIZE)
-                    cy = int(self.coordinate[1] // TILE_SIZE)
+                    # TILE_SIZE(32)로 나누어 현재 타일 칸 번호 구하기
+                    cx = int(self.coordinate[0] // 32)
+                    cy = int(self.coordinate[1] // 32)
                     
-                    # 현재 위치 주변 10x10 범위 내의 물 타일을 수집
                     water_tiles = []
                     for dy in range(-10, 11):
                         for dx in range(-10, 11):
                             tx, ty = cx + dx, cy + dy
-                            if game_map.is_water(tx, ty):
+                            
+                            # 💡 [핵심 수정] is_water 대신 확실한 방식으로 물 타일 검사
+                            tile = game_map.get_tile(tx, ty)
+                            if tile in (TileType.WATER, TileType.DEEP_WATER):
                                 water_tiles.append((tx, ty))
 
                     if water_tiles:
-                        self.target_coord = random.choice(water_tiles)
+                        chosen_tx, chosen_ty = random.choice(water_tiles)
+                        # 타일 번호를 다시 픽셀 좌표(정중앙)로 변환
+                        target_x = chosen_tx * 32 + 16.0
+                        target_y = chosen_ty * 32 + 16.0
+                        self.target_coord = [target_x, target_y]
+                    else:
+                        # 💡 [핵심 수정] 주변에 물이 아예 없을 경우 에러 없이 단순히 육지 배회
+                        rx = self.coordinate[0] + random.uniform(-300.0, 300.0)
+                        ry = self.coordinate[1] + random.uniform(-300.0, 300.0)
+                        self.target_coord = [rx, ry]
+                        
+            # 목표 지점이 설정되어 있다면 이동
+            if getattr(self, 'target_coord', None):
+                self.move(dt, target=self.target_coord)
+                if self.distance_to(self.target_coord) < 15.0:
+                    self.target_coord = None
                         
 
 
@@ -592,9 +620,10 @@ class ToxicFrog(Animal):
         super().__init__(name, coordinate, **kwargs)
         self.poison_amount = poison_amount
         self.max_speed = 45.0
+        self.size = random.uniform(30,60)
 
-        # 💡 1. 여기서 코뿔소 전용 이미지를 설정
-        self.image_path = "frog.png"  # 코뿔소 이미지 파일명
+        # 💡 1. 여기서 독개구리 전용 이미지를 설정
+        self.image_path = "frog.png"  # 독개구리 이미지 파일명
         self.image = None
         
         # 이미지가 캐시에 없으면 최초 1회 로드
