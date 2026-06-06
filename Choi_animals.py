@@ -189,10 +189,15 @@ class Rhino(Animal):
                 
             # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
             scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
+            scaled_image = pygame.transform.flip(scaled_image, True, False) # 코뿔소는 이미지 바라보는 방향이 반대라 좌우 반전
+
+            # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
+            angle_deg = math.degrees(-self.facing_angle)
+            rotated_image = pygame.transform.rotate(scaled_image, angle_deg)
                 
             # 이미지 출력 (중심점 맞추기)
-            rect = scaled_image.get_rect(center=(sx, sy))
-            screen.blit(scaled_image, rect)
+            rect = rotated_image.get_rect(center=(sx, sy))
+            screen.blit(rotated_image, rect)
                 
             # 체력바 렌더링
             hp_ratio = self.hp / self.max_hp
@@ -381,10 +386,14 @@ class ElectricEel(Predator):
                 
             # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
             scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
+
+            # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
+            angle_deg = math.degrees(-self.facing_angle)
+            rotated_image = pygame.transform.rotate(scaled_image, angle_deg)
                 
             # 이미지 출력 (중심점 맞추기)
-            rect = scaled_image.get_rect(center=(sx, sy))
-            screen.blit(scaled_image, rect)
+            rect = rotated_image.get_rect(center=(sx, sy))
+            screen.blit(rotated_image, rect)
                 
             # 체력바 렌더링
             hp_ratio = self.hp / self.max_hp
@@ -628,10 +637,14 @@ class ToxicFrog(Animal):
                 
             # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
             scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
+
+            # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
+            angle_deg = math.degrees(-self.facing_angle)
+            rotated_image = pygame.transform.rotate(scaled_image, angle_deg)
                 
             # 이미지 출력 (중심점 맞추기)
-            rect = scaled_image.get_rect(center=(sx, sy))
-            screen.blit(scaled_image, rect)
+            rect = rotated_image.get_rect(center=(sx, sy))
+            screen.blit(rotated_image, rect)
                 
             # 체력바 렌더링
             hp_ratio = self.hp / self.max_hp
