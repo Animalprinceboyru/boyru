@@ -49,7 +49,7 @@ def main():
             animals.append(Anaconda(name=f"아나콘다_{i+1}", coordinate=(rx, ry)))
             i += 1
     # 전기뱀장어는 물 타일 근처에 스폰하는 것이 자연스럽습니다.
-    animals.append(ElectricEel(name="전기뱀장어A", coordinate=(200.0, 200.0)))
+    animals.append(ElectricEel(name="전기뱀장어A", coordinate=(1000.0, 1000.0)))
 
     # 2. 반복문을 이용해 여러 마리를 랜덤 위치에 대량 스폰하기
     for i in range(5):
@@ -59,9 +59,9 @@ def main():
         animals.append(ToxicFrog(name=f"독개구리_{i+1}", coordinate=(rx, ry)))
         
     for i in range(2):
-        rx = random.uniform(600.0, 1200.0)
-        ry = random.uniform(600.0, 1200.0)
-        animals.append(Rhino(name=f"돌진코뿔소_{i+1}", coordinate=(rx, ry)))
+        rx = 600.0 + i*50.0
+        ry = 600.0 + i*50.0
+        animals.append(Rhino(name=f"돌진코뿔소_{i+1}", coordinate=(rx, ry),sex=['male', 'female'][i%2]))
 
     print("모든 시스템 초기화 완료!")
     print("WASD 이동 | 마우스 휠 줌 | [ ] 시간 배속 조절")
