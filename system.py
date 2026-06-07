@@ -59,9 +59,9 @@ def main():
         animals.append(ToxicFrog(name=f"독개구리_{i+1}", coordinate=(rx, ry)))
         
     for i in range(2):
-        rx = random.uniform(600.0, 1200.0)
-        ry = random.uniform(600.0, 1200.0)
-        animals.append(Rhino(name=f"돌진코뿔소_{i+1}", coordinate=(rx, ry)))
+        rx = 600.0 + i*50.0
+        ry = 600.0 + i*50.0
+        animals.append(Rhino(name=f"돌진코뿔소_{i+1}", coordinate=(rx, ry),sex=['male', 'female'][i%2]))
 
     print("모든 시스템 초기화 완료!")
     print("WASD 이동 | 마우스 휠 줌 | [ ] 시간 배속 조절")
