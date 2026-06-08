@@ -410,11 +410,21 @@ class Animal:
         if (self.is_adult and other.is_adult
                 and self.couple is None and other.couple is None
                 and type(self) is type(other)
-                and self.distance_to(other) <= self.COUPLE_RANGE):
+                and self.distance_to(other) <= self.COUPLE_RANGE
+                and self.sex != other.sex):
             self.couple = other
             other.couple = self
             return True
         return False
+    
+    def couple_follow(self):
+        """
+        커플이 있으면 서로 일정 거리 유지하며 따라다니기 시도.
+        """
+        if self.couple and self.couple.alive:
+            dist = self.distance_to(self.couple)
+            if dist > self.COUPLE_RANGE * 1.5:
+                self.move(dt=0.1, target=self.couple.coordinate, speed_multiplier=1.2)
 
     # ── 집 / 번식 ───────────────────────────────
 
@@ -700,7 +710,8 @@ class Predator(Animal):
         elif self.is_seeking_water and self._water_target:
             self.move(dt, self._water_target)
         else:
-            self.move(dt)
+            couple_tgt = self._couple_target()
+            self.move(dt, couple_tgt)  # None이면 move(dt, None) → 관성 이동과 동일
 
 
 # ════════════════════════════════════════════════
@@ -833,4 +844,5 @@ class Prey(Animal):
         else:
             self.predator_detected = False
             self.stop_fleeing()
-            self.move(dt)
+            couple_tgt = self._couple_target()
+            self.move(dt, couple_tgt)

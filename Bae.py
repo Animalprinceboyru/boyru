@@ -5,6 +5,7 @@ from typing import Tuple, Optional, List
 
 from animal import Animal, Predator, Prey, Egg, TILE_SIZE
 
+Bae = {}
 
 # ════════════════════════════════════════════════
 #  Anaconda
@@ -58,6 +59,35 @@ class Anaconda(Predator):
             **kwargs,
         )
 
+        # 💡 1. 여기서 아나콘다 전용 이미지를 설정
+        self.image_path = "anaconda.png"  # 아나콘다 이미지 파일명
+        self.image = None
+        
+        # 이미지가 캐시에 없으면 최초 1회 로드
+        if self.image_path not in Bae:
+            try:
+                loaded_img = pygame.image.load(self.image_path).convert_alpha()
+                Bae[self.image_path] = loaded_img
+            except Exception as e:
+                print(f"⚠️ {name} 이미지 로드 실패: {e}")
+                # 💡 [핵심] 실패하더라도 딕셔너리에 None을 넣어줘야함
+                Bae[self.image_path] = None
+        orig_img = Bae[self.image_path]
+        orig_w, orig_h = orig_img.get_size() # 원본 이미지의 가로, 세로 픽셀
+            
+        # 동물의 크기(size)를 기준으로 최대 렌더링 크기 설정
+        target_max_size = int(self.size * 2.5)
+            
+        # 가로와 세로 중 더 긴 쪽을 기준으로 축소/확대 비율(scale_factor)을 계산
+        scale_factor = target_max_size / max(orig_w, orig_h)
+            
+        # 구한 비율을 가로, 세로에 똑같이 곱해주어 비율 유지
+        new_w = int(orig_w * scale_factor)
+        new_h = int(orig_h * scale_factor)
+            
+        # 새로운 가로, 세로 크기로 스케일링
+        self.image = pygame.transform.scale(orig_img, (new_w, new_h))
+
         # ── 아나콘다 전용 속성 ──
         self.choke_range: float = choke_range
         self.hidden: bool = False
@@ -75,6 +105,44 @@ class Anaconda(Predator):
         self._ambush_wait_time: float = ambush_wait_time
         self._ambush_rush_speed: float = 2.5
         self._target: Optional[Animal] = None
+    
+    # 💡 2. 부모(animal.py)의 draw 함수 오버라이딩
+    def draw(self, screen: pygame.Surface, camera):
+        if not self.alive:
+            return
+
+        if self.image:
+            # 만약 이미지가 정상적으로 로드되었다면 이미지로 그림
+            # 화면 좌표 계산
+            sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
+            
+            # 💡 [핵심 수정] 이미지의 현재 가로, 세로 길이에 각각 카메라 줌 비율을 곱해줍니다!
+            new_w = int(self.image.get_width() * camera.zoom)
+            new_h = int(self.image.get_height() * camera.zoom)
+                
+            # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
+            scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
+            scaled_image = pygame.transform.flip(scaled_image, True, False) # 코뿔소는 이미지 바라보는 방향이 반대라 좌우 반전
+
+            # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
+            angle_deg = math.degrees(-self.facing_angle)
+            rotated_image = pygame.transform.rotate(scaled_image, angle_deg)
+                
+            # 이미지 출력 (중심점 맞추기)
+            rect = rotated_image.get_rect(center=(sx, sy))
+            screen.blit(rotated_image, rect)
+                
+            # 체력바 렌더링
+            hp_ratio = self.hp / self.max_hp
+            bar_w = 30 * camera.zoom
+            bar_h = 4 * camera.zoom
+            # 체력바 위치도 이미지 세로 크기에 맞춰 유동적으로 조절
+            pygame.draw.rect(screen, (220, 60, 60), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w, bar_h))
+            pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w * hp_ratio, bar_h))
+        else:
+            # 이미지 로드 실패 시 기본 원으로 그리기(부모 클래스)
+            super().draw(screen, camera)
+
 
     # ── 은신 ────────────────────────────────────
 
@@ -344,31 +412,6 @@ class Anaconda(Predator):
             coordinate=tuple(self.coordinate),
         )
 
-    # ── 렌더링 ──────────────────────────────────
-
-    def draw(self, screen: pygame.Surface, camera):
-        if not self.alive:
-            return
-        sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
-
-        body_color = (10, 50, 10) if self.hidden else (30, 110, 30)
-        pygame.draw.ellipse(screen, body_color,
-                            (int(sx) - 14, int(sy) - 7, 28, 14))
-
-        bw = 28
-        bx, by = int(sx) - bw // 2, int(sy) - 16
-        pygame.draw.rect(screen, (80, 0, 0),   (bx, by, bw, 3))
-        pygame.draw.rect(screen, (0, 200, 60),
-                         (bx, by, int(bw * self.hp / self.max_hp), 3))
-
-        if self.is_stunned:
-            pygame.draw.circle(screen, (255, 255, 0),   (int(sx) + 12, int(sy) - 12), 3)
-        if self.is_poisoned:
-            pygame.draw.circle(screen, (100, 255, 100), (int(sx) - 12, int(sy) - 12), 3)
-        if self.hidden:
-            pygame.draw.ellipse(screen, (0, 180, 0),
-                                (int(sx) - 16, int(sy) - 9, 32, 18), 1)
-
     def __repr__(self):
         return (f"<Anaconda '{self.name}' hp={self.hp}/{self.max_hp} ")
                 
@@ -479,6 +522,72 @@ class Crocodile(Predator):
         self._shore_pos = None
         self._lurk_timer = 0.0
         self._roll_timer = 0.0
+
+        # 💡 1. 여기서 악어 전용 이미지를 설정
+        self.image_path = "crocodile.png"  # 악어 이미지 파일명
+        self.image = None
+        
+        # 이미지가 캐시에 없으면 최초 1회 로드
+        if self.image_path not in Bae:
+            try:
+                loaded_img = pygame.image.load(self.image_path).convert_alpha()
+                Bae[self.image_path] = loaded_img
+            except Exception as e:
+                print(f"⚠️ {name} 이미지 로드 실패: {e}")
+                # 💡 [핵심] 실패하더라도 딕셔너리에 None을 넣어줘야함
+                Bae[self.image_path] = None
+        orig_img = Bae[self.image_path]
+        orig_w, orig_h = orig_img.get_size() # 원본 이미지의 가로, 세로 픽셀
+            
+        # 동물의 크기(size)를 기준으로 최대 렌더링 크기 설정
+        target_max_size = int(self.size * 2.5)
+            
+        # 가로와 세로 중 더 긴 쪽을 기준으로 축소/확대 비율(scale_factor)을 계산
+        scale_factor = target_max_size / max(orig_w, orig_h)
+            
+        # 구한 비율을 가로, 세로에 똑같이 곱해주어 비율 유지
+        new_w = int(orig_w * scale_factor)
+        new_h = int(orig_h * scale_factor)
+            
+        # 새로운 가로, 세로 크기로 스케일링
+        self.image = pygame.transform.scale(orig_img, (new_w, new_h))
+
+    # 💡 2. 부모(animal.py)의 draw 함수 오버라이딩
+    def draw(self, screen: pygame.Surface, camera):
+        if not self.alive:
+            return
+
+        if self.image:
+            # 만약 이미지가 정상적으로 로드되었다면 이미지로 그림
+            # 화면 좌표 계산
+            sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
+            
+            # 💡 [핵심 수정] 이미지의 현재 가로, 세로 길이에 각각 카메라 줌 비율을 곱해줍니다!
+            new_w = int(self.image.get_width() * camera.zoom)
+            new_h = int(self.image.get_height() * camera.zoom)
+                
+            # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
+            scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
+            scaled_image = pygame.transform.flip(scaled_image, True, False) # 코뿔소는 이미지 바라보는 방향이 반대라 좌우 반전
+
+            # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
+            angle_deg = math.degrees(-self.facing_angle)
+            rotated_image = pygame.transform.rotate(scaled_image, angle_deg)
+                
+            # 이미지 출력 (중심점 맞추기)
+            rect = rotated_image.get_rect(center=(sx, sy))
+            screen.blit(rotated_image, rect)
+                
+            # 체력바 렌더링
+            hp_ratio = self.hp / self.max_hp
+            bar_w = 30 * camera.zoom
+            bar_h = 4 * camera.zoom
+            # 체력바 위치도 이미지 세로 크기에 맞춰 유동적으로 조절
+            pygame.draw.rect(screen, (220, 60, 60), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w, bar_h))
+            pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w * hp_ratio, bar_h))
+        else:
+            # 이미지 로드 실패 시 기본 원으로 그리기(부모 클래스)
+            super().draw(screen, camera)
 
     def _set_state(self, state, target=None):
         self._state      = state
@@ -622,42 +731,6 @@ class Crocodile(Predator):
             name=f"Crocodile_{random.randint(1000,9999)}",
             coordinate=tuple(self.coordinate),
         )
-
-    def draw(self, screen, camera):
-        if not self.alive:
-            return
-        sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
-
-        if self._state == self._DEATH_ROLL:
-            body = (160, 40, 20)
-        elif self.submerged:
-            body = (15, 35, 15)
-        elif self._state in (self._RUSHING, self._CHASING):
-            body = (80, 130, 40)
-        else:
-            body = (55, 100, 45)
-
-        pygame.draw.ellipse(screen, body,
-                            (int(sx)-18, int(sy)-8, 36, 16))
-        hx = int(sx + math.cos(self.facing_angle) * 16)
-        hy = int(sy + math.sin(self.facing_angle) * 16)
-        pygame.draw.circle(screen, body, (hx, hy), 7)
-
-        if self._state == self._DEATH_ROLL:
-            pygame.draw.circle(screen, (200, 80, 40), (int(sx), int(sy)), 24, 2)
-        if self.submerged:
-            pygame.draw.ellipse(screen, (30, 140, 160),
-                                (int(sx)-20, int(sy)-10, 40, 20), 1)
-
-        bw = 32
-        bx, by = int(sx) - bw//2, int(sy) - 20
-        pygame.draw.rect(screen, (80,0,0),    (bx, by, bw, 3))
-        pygame.draw.rect(screen, (0,200,60),
-                         (bx, by, int(bw * self.hp / self.max_hp), 3))
-        if self.is_stunned:
-            pygame.draw.circle(screen, (255,255,0),   (int(sx)+14, int(sy)-14), 3)
-        if self.is_poisoned:
-            pygame.draw.circle(screen, (100,255,100), (int(sx)-14, int(sy)-14), 3)
 
     def __repr__(self):
         return (f"<Crocodile '{self.name}' hp={self.hp}/{self.max_hp} "
