@@ -1,5 +1,6 @@
 import random
 import pygame
+import math
 from typing import Tuple, List, Optional
 
 # base_classes 대신 실제 파일인 animal에서 import
