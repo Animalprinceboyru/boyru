@@ -2,7 +2,7 @@ import pygame
 import sys
 import random #내가 추가
 from Lee_animals import Capybara
-from map_system import GameMap
+from map_system import TILE_SIZE, GameMap
 from camera import Camera
 from weather import WeatherSystem
 from gui import HUD
@@ -43,15 +43,23 @@ def main():
     animals.append(ToxicFrog(name="화살독개구리", coordinate=(350.0, 450.0)))
     animals.append(Anaconda(name="아나콘다", coordinate=(600.0, 400.0)))
     animals.append(Capybara(name='카피바라',coordinate=(1000,1000)))
-    i = 0
-    while i <10:
-        rx = int(random.uniform(100.0, 1800.0))
-        ry = int(random.uniform(100.0, 1350.0))
-        if game_map.is_water(rx, ry):
-            animals.append(Anaconda(name=f"아나콘다_{i+1}", coordinate=(rx, ry)))
-            i += 1
-    # 전기뱀장어는 물 타일 근처에 스폰하는 것이 자연스럽습니다.
-    animals.append(ElectricEel(name="전기뱀장어A", coordinate=(1000.0, 1000.0)))
+    
+    # 💡 [수정] 맵 전체를 돌며 물(WATER, DEEP_WATER) 타일의 좌표를 수집
+    water_tiles = []
+    for ty in range(game_map.map_height):
+        for tx in range(game_map.map_width):
+            if game_map.is_water(tx, ty):
+                water_tiles.append((tx, ty))
+
+    # 전기뱀장어 11마리 스폰 구조
+    for i in range(11):
+        if not water_tiles:
+            break
+        # 💡 [수정] 중복되었던 random.choice 줄을 하나로 정리
+        tx, ty = random.choice(water_tiles)
+        px = tx * TILE_SIZE + TILE_SIZE / 2
+        py = ty * TILE_SIZE + TILE_SIZE / 2
+        animals.append(Anaconda(name=f"전기뱀장어_{i+1}", coordinate=(px, py)))
 
     # 2. 반복문을 이용해 여러 마리를 랜덤 위치에 대량 스폰하기
     for i in range(5):
