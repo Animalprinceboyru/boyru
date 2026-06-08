@@ -12,6 +12,8 @@ except ImportError:
     # FlyingAnimal이 없을 경우 오류 방지를 위한 폴백
     FlyingAnimal = Animal 
 
+Lee = {}
+
 
 # ==========================================
 # 1. 카피바라 (Capybara)
@@ -35,28 +37,71 @@ class Capybara(Prey):
         self.target_coord: Optional[List[float]] = None
         self.wander_timer = 0.0
 
+        # 💡 1. 여기서 카피바라 전용 이미지를 설정
+        self.image_path = "capybara.png"  # 카피바라 이미지 파일명
+        self.image = None
+        
+        # 이미지가 캐시에 없으면 최초 1회 로드
+        if self.image_path not in Lee:
+            try:
+                loaded_img = pygame.image.load(self.image_path).convert_alpha()
+                Lee[self.image_path] = loaded_img
+            except Exception as e:
+                print(f"⚠️ {name} 이미지 로드 실패: {e}")
+                # 💡 [핵심] 실패하더라도 딕셔너리에 None을 넣어줘야함
+                Lee[self.image_path] = None
+        orig_img = Lee[self.image_path]
+        orig_w, orig_h = orig_img.get_size() # 원본 이미지의 가로, 세로 픽셀
+            
+        # 동물의 크기(size)를 기준으로 최대 렌더링 크기 설정
+        target_max_size = int(self.size * 2.5)
+            
+        # 가로와 세로 중 더 긴 쪽을 기준으로 축소/확대 비율(scale_factor)을 계산
+        scale_factor = target_max_size / max(orig_w, orig_h)
+            
+        # 구한 비율을 가로, 세로에 똑같이 곱해주어 비율 유지
+        new_w = int(orig_w * scale_factor)
+        new_h = int(orig_h * scale_factor)
+            
+        # 새로운 가로, 세로 크기로 스케일링
+        self.image = pygame.transform.scale(orig_img, (new_w, new_h))
+
     def draw(self, screen: pygame.Surface, camera):
         if not self.alive:
             return
-        sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
-        r = int(10 * camera.zoom)
-        r = max(3, r)
-        
-        # 카피바라의 몸체 (둥글고 통통한 갈색 원)
-        pygame.draw.circle(screen, (130, 90, 60), (int(sx), int(sy)), r)
-        # 머리 부분 상세 묘사
-        pygame.draw.circle(screen, (100, 70, 45), (int(sx) + int(r * 0.4), int(sy) - int(r * 0.3)), int(r * 0.6))
-        
-        # 체력바 렌더링
-        bw = int(22 * camera.zoom)
-        bx, by = int(sx) - bw // 2, int(sy) - r - 6
-        pygame.draw.rect(screen, (80, 0, 0),   (bx, by, bw, 3))
-        pygame.draw.rect(screen, (100, 220, 120), (bx, by, int(bw * self.hp / self.max_hp), 3))
-        
-        if self.is_stunned:
-            pygame.draw.circle(screen, (255, 255, 0), (int(sx) + r, int(sy) - r), 3)
-        if self.is_poisoned:
-            pygame.draw.circle(screen, (100, 255, 100), (int(sx) - r, int(sy) - r), 3)
+
+        if self.image:
+            # 만약 이미지가 정상적으로 로드되었다면 이미지로 그림
+            # 화면 좌표 계산
+            sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
+            
+            # 💡 [핵심 수정] 이미지의 현재 가로, 세로 길이에 각각 카메라 줌 비율을 곱해줍니다!
+            new_w = int(self.image.get_width() * camera.zoom)
+            new_h = int(self.image.get_height() * camera.zoom)
+                
+            # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
+            scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
+            scaled_image = pygame.transform.flip(scaled_image, True, False) # 뱀장어는 이미지 바라보는 방향이 반대라 좌우 반전
+            scaled_image = pygame.transform.rotate(scaled_image, 20) # 뱀장어는 살짝 기울어져 있음
+
+            # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
+            angle_deg = math.degrees(-self.facing_angle)
+            rotated_image = pygame.transform.rotate(scaled_image, angle_deg)
+                
+            # 이미지 출력 (중심점 맞추기)
+            rect = rotated_image.get_rect(center=(sx, sy))
+            screen.blit(rotated_image, rect)
+                
+            # 체력바 렌더링
+            hp_ratio = self.hp / self.max_hp
+            bar_w = 30 * camera.zoom
+            bar_h = 4 * camera.zoom
+            # 체력바 위치도 이미지 세로 크기에 맞춰 유동적으로 조절
+            pygame.draw.rect(screen, (220, 60, 60), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w, bar_h))
+            pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w * hp_ratio, bar_h))
+        else:
+            # 이미지 로드 실패 시 기본 원으로 그리기(부모 클래스)
+            super().draw(screen, camera)
 
     def take_damage(self, amount: float, source: str = "unknown", attacker: Optional[Animal] = None):
         """
@@ -165,24 +210,71 @@ class Monkey(Prey):
         self.wander_timer = 0.0
         self.throw_cooldown = 0.0
 
+        # 💡 1. 여기서 원숭이 전용 이미지를 설정
+        self.image_path = "monkey.png"  # 원숭이 이미지 파일명
+        self.image = None
+        
+        # 이미지가 캐시에 없으면 최초 1회 로드
+        if self.image_path not in Lee:
+            try:
+                loaded_img = pygame.image.load(self.image_path).convert_alpha()
+                Lee[self.image_path] = loaded_img
+            except Exception as e:
+                print(f"⚠️ {name} 이미지 로드 실패: {e}")
+                # 💡 [핵심] 실패하더라도 딕셔너리에 None을 넣어줘야함
+                Lee[self.image_path] = None
+        orig_img = Lee[self.image_path]
+        orig_w, orig_h = orig_img.get_size() # 원본 이미지의 가로, 세로 픽셀
+            
+        # 동물의 크기(size)를 기준으로 최대 렌더링 크기 설정
+        target_max_size = int(self.size * 2.5)
+            
+        # 가로와 세로 중 더 긴 쪽을 기준으로 축소/확대 비율(scale_factor)을 계산
+        scale_factor = target_max_size / max(orig_w, orig_h)
+            
+        # 구한 비율을 가로, 세로에 똑같이 곱해주어 비율 유지
+        new_w = int(orig_w * scale_factor)
+        new_h = int(orig_h * scale_factor)
+            
+        # 새로운 가로, 세로 크기로 스케일링
+        self.image = pygame.transform.scale(orig_img, (new_w, new_h))
+
     def draw(self, screen: pygame.Surface, camera):
         if not self.alive:
             return
-        sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
-        r = int(8 * camera.zoom)
-        r = max(3, r)
-        
-        # 원숭이 그리기 (나무 위에 있으면 좀 더 밝은 색으로 구분 가능)
-        color = (180, 110, 40) if not self.on_tree else (220, 140, 60)
-        pygame.draw.circle(screen, color, (int(sx), int(sy)), r)
-        # 원숭이 얼굴 묘사
-        pygame.draw.circle(screen, (245, 200, 170), (int(sx), int(sy) - 2), int(4 * camera.zoom))
-        
-        # 체력바 렌더링
-        bw = int(18 * camera.zoom)
-        bx, by = int(sx) - bw // 2, int(sy) - r - 6
-        pygame.draw.rect(screen, (80, 0, 0),   (bx, by, bw, 3))
-        pygame.draw.rect(screen, (100, 220, 120), (bx, by, int(bw * self.hp / self.max_hp), 3))
+
+        if self.image:
+            # 만약 이미지가 정상적으로 로드되었다면 이미지로 그림
+            # 화면 좌표 계산
+            sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
+            
+            # 💡 [핵심 수정] 이미지의 현재 가로, 세로 길이에 각각 카메라 줌 비율을 곱해줍니다!
+            new_w = int(self.image.get_width() * camera.zoom)
+            new_h = int(self.image.get_height() * camera.zoom)
+                
+            # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
+            scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
+            scaled_image = pygame.transform.flip(scaled_image, True, False) # 뱀장어는 이미지 바라보는 방향이 반대라 좌우 반전
+            scaled_image = pygame.transform.rotate(scaled_image, 20) # 뱀장어는 살짝 기울어져 있음
+
+            # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
+            angle_deg = math.degrees(-self.facing_angle)
+            rotated_image = pygame.transform.rotate(scaled_image, angle_deg)
+                
+            # 이미지 출력 (중심점 맞추기)
+            rect = rotated_image.get_rect(center=(sx, sy))
+            screen.blit(rotated_image, rect)
+                
+            # 체력바 렌더링
+            hp_ratio = self.hp / self.max_hp
+            bar_w = 30 * camera.zoom
+            bar_h = 4 * camera.zoom
+            # 체력바 위치도 이미지 세로 크기에 맞춰 유동적으로 조절
+            pygame.draw.rect(screen, (220, 60, 60), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w, bar_h))
+            pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w * hp_ratio, bar_h))
+        else:
+            # 이미지 로드 실패 시 기본 원으로 그리기(부모 클래스)
+            super().draw(screen, camera)
         
         if self.is_stunned:
             pygame.draw.circle(screen, (255, 255, 0), (int(sx) + r, int(sy) - r), 3)
@@ -321,26 +413,71 @@ class Parrot(FlyingAnimal, Prey):
         self.wander_timer = 0.0
         self.alert_cooldown = 0.0
 
+        # 💡 1. 여기서 앵무새 전용 이미지를 설정
+        self.image_path = "parrot.png"  # 앵무새 이미지 파일명
+        self.image = None
+        
+        # 이미지가 캐시에 없으면 최초 1회 로드
+        if self.image_path not in Lee:
+            try:
+                loaded_img = pygame.image.load(self.image_path).convert_alpha()
+                Lee[self.image_path] = loaded_img
+            except Exception as e:
+                print(f"⚠️ {name} 이미지 로드 실패: {e}")
+                # 💡 [핵심] 실패하더라도 딕셔너리에 None을 넣어줘야함
+                Lee[self.image_path] = None
+        orig_img = Lee[self.image_path]
+        orig_w, orig_h = orig_img.get_size() # 원본 이미지의 가로, 세로 픽셀
+            
+        # 동물의 크기(size)를 기준으로 최대 렌더링 크기 설정
+        target_max_size = int(self.size * 2.5)
+            
+        # 가로와 세로 중 더 긴 쪽을 기준으로 축소/확대 비율(scale_factor)을 계산
+        scale_factor = target_max_size / max(orig_w, orig_h)
+            
+        # 구한 비율을 가로, 세로에 똑같이 곱해주어 비율 유지
+        new_w = int(orig_w * scale_factor)
+        new_h = int(orig_h * scale_factor)
+            
+        # 새로운 가로, 세로 크기로 스케일링
+        self.image = pygame.transform.scale(orig_img, (new_w, new_h))
+
     def draw(self, screen: pygame.Surface, camera):
         if not self.alive:
             return
-        sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
-        
-        # 비행 중인 상태일 때는 약간 공중에 떠 있는 듯한 시각적 효과 부여
-        offset_y = -18 if self.is_flying else 0
-        r = int(6 * camera.zoom)
-        r = max(3, r)
-        
-        # 앵무새의 다채로운 깃털 드로잉
-        pygame.draw.circle(screen, (255, 50, 50), (int(sx), int(sy) + offset_y), r) # 빨간 몸통
-        pygame.draw.ellipse(screen, (50, 100, 255), (int(sx) - r, int(sy) + offset_y - r//2, r*2, r)) # 파란 날개
-        pygame.draw.circle(screen, (255, 215, 0), (int(sx) + r//2, int(sy) + offset_y - r//3), int(3 * camera.zoom)) # 노란 부리
-        
-        # 미니 체력바
-        bw = int(14 * camera.zoom)
-        bx, by = int(sx) - bw // 2, int(sy) + offset_y - r - 6
-        pygame.draw.rect(screen, (80, 0, 0),   (bx, by, bw, 2))
-        pygame.draw.rect(screen, (100, 220, 120), (bx, by, int(bw * self.hp / self.max_hp), 2))
+
+        if self.image:
+            # 만약 이미지가 정상적으로 로드되었다면 이미지로 그림
+            # 화면 좌표 계산
+            sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
+            
+            # 💡 [핵심 수정] 이미지의 현재 가로, 세로 길이에 각각 카메라 줌 비율을 곱해줍니다!
+            new_w = int(self.image.get_width() * camera.zoom)
+            new_h = int(self.image.get_height() * camera.zoom)
+                
+            # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
+            scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
+            scaled_image = pygame.transform.flip(scaled_image, True, False) # 뱀장어는 이미지 바라보는 방향이 반대라 좌우 반전
+            scaled_image = pygame.transform.rotate(scaled_image, 20) # 뱀장어는 살짝 기울어져 있음
+
+            # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
+            angle_deg = math.degrees(-self.facing_angle)
+            rotated_image = pygame.transform.rotate(scaled_image, angle_deg)
+                
+            # 이미지 출력 (중심점 맞추기)
+            rect = rotated_image.get_rect(center=(sx, sy))
+            screen.blit(rotated_image, rect)
+                
+            # 체력바 렌더링
+            hp_ratio = self.hp / self.max_hp
+            bar_w = 30 * camera.zoom
+            bar_h = 4 * camera.zoom
+            # 체력바 위치도 이미지 세로 크기에 맞춰 유동적으로 조절
+            pygame.draw.rect(screen, (220, 60, 60), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w, bar_h))
+            pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w * hp_ratio, bar_h))
+        else:
+            # 이미지 로드 실패 시 기본 원으로 그리기(부모 클래스)
+            super().draw(screen, camera)
 
     def make_alert_sound(self, animals: List[Animal]):
         """[계획서 사양 구현] 포식자 탐색 후 주변 동물들에게 알람을 보내 스피드 증가 및 스태미나를 보충해줍니다."""
