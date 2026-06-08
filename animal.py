@@ -424,7 +424,6 @@ class Animal:
         if self.couple and self.couple.alive:
             dist = self.distance_to(self.couple)
             if dist > self.COUPLE_RANGE * 1.5:
-                self.move(dt=0.1, target=self.couple.coordinate, speed_multiplier=1.2)
                 return self.couple.coordinate
         return None
 
