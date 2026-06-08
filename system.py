@@ -1,6 +1,7 @@
 import pygame
 import sys
 import random #내가 추가
+from Lee_animals import Capybara
 from map_system import GameMap
 from camera import Camera
 from weather import WeatherSystem
@@ -41,6 +42,7 @@ def main():
     animals.append(Rhino(name="대장코뿔소", coordinate=(400.0, 500.0)))
     animals.append(ToxicFrog(name="화살독개구리", coordinate=(350.0, 450.0)))
     animals.append(Anaconda(name="아나콘다", coordinate=(600.0, 400.0)))
+    animals.append(Capybara(name='카피바라',coordinate=(1000,1000)))
     i = 0
     while i <10:
         rx = int(random.uniform(100.0, 1800.0))
