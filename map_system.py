@@ -490,3 +490,16 @@ class GameMap:
 
     def is_water(self, tx: int, ty: int) -> bool:
         return self.get_tile(tx, ty) in (TileType.WATER, TileType.DEEP_WATER)
+    
+    def is_in_water(self, px: float, py: float) -> bool:
+        tx = int(px // TILE_SIZE)
+        ty = int(py // TILE_SIZE)
+        return self.is_water(tx, ty)
+
+    def get_environment(self, px: float, py: float) -> str:
+        tx = int(px // TILE_SIZE)
+        ty = int(py // TILE_SIZE)
+        tile = self.get_tile(tx, ty)
+        if tile in (TileType.WATER, TileType.DEEP_WATER):
+            return "water"
+        return "land"

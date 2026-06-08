@@ -552,12 +552,9 @@ class Animal:
         현재 타일에 따라 environment_status 갱신.
         갈증 임계값 초과 시 물 타일로 이동 목표 설정.
         """
-        from map_system import TileType
-        tx = int(self.coordinate[0] // TILE_SIZE)
-        ty = int(self.coordinate[1] // TILE_SIZE)
-        tile = game_map.get_tile(tx, ty)
-        in_water = tile in (TileType.WATER, TileType.DEEP_WATER)
-        self.environment_status = "water" if in_water else "land"
+        # 픽셀 좌표 기반으로 환경 상태 판별
+        self.environment_status = game_map.get_environment(self.coordinate[0], self.coordinate[1])
+        in_water = self.environment_status == "water"
 
         # 목표 도달 시 초기화
         if in_water and self.thirst <= 0:

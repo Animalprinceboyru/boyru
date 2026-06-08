@@ -1,8 +1,19 @@
 import random
-from typing import Tuple, List
+import pygame
+from typing import Tuple, List, Optional
 
 # base_classes 대신 실제 파일인 animal에서 import
 from animal import Animal, Prey, TILE_SIZE 
+
+# 최강빈 조원이 만든 클래스가 Choi_animals.py 에 있으므로 정상 참조
+try:
+    from Choi_animals import FlyingAnimal
+except ImportError:
+    # FlyingAnimal이 없을 경우 오류 방지를 위한 폴백
+    FlyingAnimal = Animal 
+
+Lee = {}
+
 
 # ==========================================
 # 1. 카피바라 (Capybara)
@@ -10,37 +21,118 @@ from animal import Animal, Prey, TILE_SIZE
 class Capybara(Prey):
     SPECIES_VISION_RANGE = 200.0
     SPECIES_VISION_ANGLE = 270.0
+    minimap_color = (139, 69, 19)  # 미니맵에 표시할 갈색
 
     def __init__(self, name: str, coordinate: Tuple[float, float], **kwargs):
-        # 1. 여기서 escape_success_rate=0.5 를 제거합니다.
         super().__init__(name, coordinate, danger_range=150.0, **kwargs)
-        
         self.stress_level = 0.0
         self.group_size = 1
         
         self.max_hp = 120
         self.hp = 120
         self.max_speed = 60.0
+        self.escape_success_rate = 0.5
+        
+        # 평상시 배회를 위한 변수
+        self.target_coord: Optional[List[float]] = None
+        self.wander_timer = 0.0
+
+        # 💡 1. 여기서 카피바라 전용 이미지를 설정
+        self.image_path = "capybara.png"  # 카피바라 이미지 파일명
+        self.image = None
+        
+        # 이미지가 캐시에 없으면 최초 1회 로드
+        if self.image_path not in Lee:
+            try:
+                loaded_img = pygame.image.load(self.image_path).convert_alpha()
+                Lee[self.image_path] = loaded_img
+            except Exception as e:
+                print(f"⚠️ {name} 이미지 로드 실패: {e}")
+                # 💡 [핵심] 실패하더라도 딕셔너리에 None을 넣어줘야함
+                Lee[self.image_path] = None
+        orig_img = Lee[self.image_path]
+        orig_w, orig_h = orig_img.get_size() # 원본 이미지의 가로, 세로 픽셀
+            
+        # 동물의 크기(size)를 기준으로 최대 렌더링 크기 설정
+        target_max_size = int(self.size * 2.5)
+            
+        # 가로와 세로 중 더 긴 쪽을 기준으로 축소/확대 비율(scale_factor)을 계산
+        scale_factor = target_max_size / max(orig_w, orig_h)
+            
+        # 구한 비율을 가로, 세로에 똑같이 곱해주어 비율 유지
+        new_w = int(orig_w * scale_factor)
+        new_h = int(orig_h * scale_factor)
+            
+        # 새로운 가로, 세로 크기로 스케일링
+        self.image = pygame.transform.scale(orig_img, (new_w, new_h))
+
+    def draw(self, screen: pygame.Surface, camera):
+        if not self.alive:
+            return
+
+        if self.image:
+            # 만약 이미지가 정상적으로 로드되었다면 이미지로 그림
+            # 화면 좌표 계산
+            sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
+            
+            # 💡 [핵심 수정] 이미지의 현재 가로, 세로 길이에 각각 카메라 줌 비율을 곱해줍니다!
+            new_w = int(self.image.get_width() * camera.zoom)
+            new_h = int(self.image.get_height() * camera.zoom)
+                
+            # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
+            scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
+            scaled_image = pygame.transform.flip(scaled_image, True, False) # 뱀장어는 이미지 바라보는 방향이 반대라 좌우 반전
+            scaled_image = pygame.transform.rotate(scaled_image, 20) # 뱀장어는 살짝 기울어져 있음
+
+            # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
+            angle_deg = math.degrees(-self.facing_angle)
+            rotated_image = pygame.transform.rotate(scaled_image, angle_deg)
+                
+            # 이미지 출력 (중심점 맞추기)
+            rect = rotated_image.get_rect(center=(sx, sy))
+            screen.blit(rotated_image, rect)
+                
+            # 체력바 렌더링
+            hp_ratio = self.hp / self.max_hp
+            bar_w = 30 * camera.zoom
+            bar_h = 4 * camera.zoom
+            # 체력바 위치도 이미지 세로 크기에 맞춰 유동적으로 조절
+            pygame.draw.rect(screen, (220, 60, 60), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w, bar_h))
+            pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w * hp_ratio, bar_h))
+        else:
+            # 이미지 로드 실패 시 기본 원으로 그리기(부모 클래스)
+            super().draw(screen, camera)
+
+    def take_damage(self, amount: float, source: str = "unknown", attacker: Optional[Animal] = None):
+        """
+        [계획서 사양 구현] 다수의 개체가 모이면 group_size 속성이 증가하여,
+        포식자의 공격 성공 확률을 낮추는 방어 버프(회피)를 얻습니다.
+        """
+        evade_chance = min(0.60, 0.12 * (self.group_size - 1))
+        if evade_chance > 0 and random.random() < evade_chance:
+            print(f"🛡️ [{self.name}]가 무리 방어 버프(방어 확률: {evade_chance:.1%})로 포식자의 공격을 무력화했습니다!")
+            return
+        super().take_damage(amount, source)
 
     def socialize(self, animals: List[Animal]):
         """주변의 카피바라와 모여 그룹 사이즈를 늘리고 생존율(방어 버프)을 높입니다."""
         nearby_capybaras = [
             a for a in animals 
-            if isinstance(a, Capybara) and a is not self and a.alive and self.distance_to(a) < 100.0
+            if isinstance(a, Capybara) and a is not self and a.alive and self.distance_to(a) < 120.0
         ]
         self.group_size = 1 + len(nearby_capybaras)
         
         if self.group_size > 1:
-            self.stress_level = max(0.0, self.stress_level - 1.0)
+            self.stress_level = max(0.0, self.stress_level - 1.5)
             self.escape_success_rate = min(0.95, 0.5 + 0.1 * len(nearby_capybaras))
 
-    def flee_to_water(self, game_map, dt: float,predator:Animal):
+    def flee_to_water(self, game_map, dt: float, predator: Animal):
         """가까운 물가 방향을 찾아 우선적으로 도망칩니다."""
         tx, ty = int(self.coordinate[0] // TILE_SIZE), int(self.coordinate[1] // TILE_SIZE)
         
         water_target = None
         min_dist = float('inf')
-        search_radius = 6
+        search_radius = 8
         
         for dy in range(-search_radius, search_radius + 1):
             for dx in range(-search_radius, search_radius + 1):
@@ -58,7 +150,7 @@ class Capybara(Prey):
             self.flee_from(predator, dt)
 
     def update(self, dt: float, game_map, weather, animals: List[Animal]):
-        # Prey.update를 부르면 이중 이동이 발생하므로 Animal.update를 호출
+        # 이중 이동 방지를 위해 super().update 대신 Animal.update 직접 호출
         Animal.update(self, dt, game_map, weather, animals)
         if not self.alive or self.is_stunned:
             return
@@ -68,19 +160,34 @@ class Capybara(Prey):
         
         if predators:
             self.predator_detected = True
-            self.stress_level = min(100.0, self.stress_level + 10.0 * dt)
-            # [추가] 가장 가까운 포식자 찾기
+            self.stress_level = min(100.0, self.stress_level + 12.0 * dt)
             closest = min(predators, key=lambda p: self.distance_to(p))
             
-            # 이미 물속이라면 뱀장어 반대 방향으로 도망치기
+            # 이미 물속이라면 포식자(전기뱀장어 등) 반대 방향으로 회피
             if getattr(self, 'environment_status', '') == 'water':
                 self.flee_from(closest, dt)
             else:
                 self.flee_to_water(game_map, dt, closest)
+            self.target_coord = None
         else:
             self.predator_detected = False
-            self.stress_level = max(0.0, self.stress_level - 5.0 * dt)
-            self.move(dt) # 평상시 이동 추가
+            self.stress_level = max(0.0, self.stress_level - 6.0 * dt)
+            
+            # 평화로운 상황에서의 배회 메커니즘
+            self.wander_timer -= dt
+            if self.wander_timer <= 0 or not self.target_coord:
+                self.wander_timer = random.uniform(3.0, 6.0)
+                rx = self.coordinate[0] + random.uniform(-200.0, 200.0)
+                ry = self.coordinate[1] + random.uniform(-200.0, 200.0)
+                
+                # 맵 영역을 벗어나지 않도록 좌표 제한
+                rx = max(32.0, min(float(game_map.pixel_width - 32), rx))
+                ry = max(32.0, min(float(game_map.pixel_height - 32), ry))
+                self.target_coord = [rx, ry]
+            
+            self.move(dt, self.target_coord, speed_multiplier=0.6)
+            if self.distance_to(self.target_coord) < 15.0:
+                self.target_coord = None
 
 
 # ==========================================
@@ -89,6 +196,7 @@ class Capybara(Prey):
 class Monkey(Prey):
     SPECIES_VISION_RANGE = 250.0
     SPECIES_VISION_ANGLE = 200.0
+    minimap_color = (210, 105, 30)  # 초콜릿색
 
     def __init__(self, name: str, coordinate: Tuple[float, float], **kwargs):
         super().__init__(name, coordinate, danger_range=200.0, **kwargs)
@@ -97,6 +205,90 @@ class Monkey(Prey):
         self.throw_power = 20.0     
         self.max_speed = 85.0
         self.current_tree = None
+        
+        self.target_coord: Optional[List[float]] = None
+        self.wander_timer = 0.0
+        self.throw_cooldown = 0.0
+
+        # 💡 1. 여기서 원숭이 전용 이미지를 설정
+        self.image_path = "monkey.png"  # 원숭이 이미지 파일명
+        self.image = None
+        
+        # 이미지가 캐시에 없으면 최초 1회 로드
+        if self.image_path not in Lee:
+            try:
+                loaded_img = pygame.image.load(self.image_path).convert_alpha()
+                Lee[self.image_path] = loaded_img
+            except Exception as e:
+                print(f"⚠️ {name} 이미지 로드 실패: {e}")
+                # 💡 [핵심] 실패하더라도 딕셔너리에 None을 넣어줘야함
+                Lee[self.image_path] = None
+        orig_img = Lee[self.image_path]
+        orig_w, orig_h = orig_img.get_size() # 원본 이미지의 가로, 세로 픽셀
+            
+        # 동물의 크기(size)를 기준으로 최대 렌더링 크기 설정
+        target_max_size = int(self.size * 2.5)
+            
+        # 가로와 세로 중 더 긴 쪽을 기준으로 축소/확대 비율(scale_factor)을 계산
+        scale_factor = target_max_size / max(orig_w, orig_h)
+            
+        # 구한 비율을 가로, 세로에 똑같이 곱해주어 비율 유지
+        new_w = int(orig_w * scale_factor)
+        new_h = int(orig_h * scale_factor)
+            
+        # 새로운 가로, 세로 크기로 스케일링
+        self.image = pygame.transform.scale(orig_img, (new_w, new_h))
+
+    def draw(self, screen: pygame.Surface, camera):
+        if not self.alive:
+            return
+
+        if self.image:
+            # 만약 이미지가 정상적으로 로드되었다면 이미지로 그림
+            # 화면 좌표 계산
+            sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
+            
+            # 💡 [핵심 수정] 이미지의 현재 가로, 세로 길이에 각각 카메라 줌 비율을 곱해줍니다!
+            new_w = int(self.image.get_width() * camera.zoom)
+            new_h = int(self.image.get_height() * camera.zoom)
+                
+            # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
+            scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
+            scaled_image = pygame.transform.flip(scaled_image, True, False) # 뱀장어는 이미지 바라보는 방향이 반대라 좌우 반전
+            scaled_image = pygame.transform.rotate(scaled_image, 20) # 뱀장어는 살짝 기울어져 있음
+
+            # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
+            angle_deg = math.degrees(-self.facing_angle)
+            rotated_image = pygame.transform.rotate(scaled_image, angle_deg)
+                
+            # 이미지 출력 (중심점 맞추기)
+            rect = rotated_image.get_rect(center=(sx, sy))
+            screen.blit(rotated_image, rect)
+                
+            # 체력바 렌더링
+            hp_ratio = self.hp / self.max_hp
+            bar_w = 30 * camera.zoom
+            bar_h = 4 * camera.zoom
+            # 체력바 위치도 이미지 세로 크기에 맞춰 유동적으로 조절
+            pygame.draw.rect(screen, (220, 60, 60), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w, bar_h))
+            pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w * hp_ratio, bar_h))
+        else:
+            # 이미지 로드 실패 시 기본 원으로 그리기(부모 클래스)
+            super().draw(screen, camera)
+        
+        if self.is_stunned:
+            pygame.draw.circle(screen, (255, 255, 0), (int(sx) + r, int(sy) - r), 3)
+
+    def take_damage(self, amount: float, source: str = "unknown", attacker: Optional[Animal] = None):
+        """
+        [계획서 사양 구현] 지상 포식자 공격은 80% 확률로 자동 회피합니다.
+        """
+        if attacker and attacker.alive:
+            is_ground_predator = not getattr(attacker, 'can_fly', False) and getattr(attacker, 'environment_status', 'land') != 'water'
+            if is_ground_predator and random.random() < 0.80:
+                print(f"🐒 [{self.name}]가 지상 포식자 {attacker.name}의 습격을 가볍게 백덤블링으로 피했습니다! (80% 회피 작동)")
+                return
+        super().take_damage(amount, source)
 
     def climb(self, tree):
         if tree and not tree.broken:
@@ -105,6 +297,8 @@ class Monkey(Prey):
             self.coordinate = list(tree.coordinate)
             self.environment_status = "tree"
             self.stop_fleeing()
+            self.target_coord = None
+            print(f"🐒 [{self.name}]가 {tree.tree_type} 나무 꼭대기로 도망쳤습니다.")
 
     def fall_from_tree(self):
         self.on_tree = False
@@ -112,87 +306,213 @@ class Monkey(Prey):
         self.environment_status = "land"
         self.take_damage(15.0, source="falling")
         self.apply_stun(2.0)
+        print(f"🐒 [{self.name}]가 추락 부상을 입고 충격으로 기절했습니다!")
 
     def throw_fruit(self, target: Animal):
-        if self.inventory > 0 and target.alive:
+        """[계획서 사양 구현] 포식자에게 과일을 던져 기절시키고 사냥을 강제 중단시킵니다."""
+        if self.inventory > 0 and target.alive and self.throw_cooldown <= 0:
             self.inventory -= 1
-            print(f"🐒 {self.name}가 {target.name}에게 과일을 던졌습니다!")
-            target.apply_stun(1.5)               
+            self.throw_cooldown = 2.0  # 무한 투척 방지 쿨타임
+            print(f"🐒 [{self.name}]가 조준하여 포식자 {target.name}의 머리에 단단한 야생 과일을 던졌습니다!")
+            target.apply_stun(2.0)               
             target.use_stamina(15.0)
+            if hasattr(target, 'stop_hunt'):
+                target.stop_hunt()
 
-    # 파라미터에 dt 추가
     def react_to_predator(self, dt: float, predators: List[Animal], game_map):
         closest_predator = min(predators, key=lambda p: self.distance_to(p))
         dist = self.distance_to(closest_predator)
 
-        if self.inventory > 0 and 50 < dist < 150:
-            if random.random() < 0.05:
+        # 멀리 있는 포식자 견제 및 방해 (사거리: 60 ~ 180)
+        if self.inventory > 0 and 60.0 < dist < 180.0:
+            if random.random() < 0.08:  
                 self.throw_fruit(closest_predator)
 
-        if dist <= 50 and not self.on_tree:
-            trees = game_map.get_trees_in_canopy(self.coordinate[0], self.coordinate[1])
-            if trees and random.random() < 0.8:
-                self.climb(trees[0])
+        # 포식자가 일정 거리 이하로 인접했을 때의 대처
+        if not self.on_tree:
+            if dist <= 60.0:
+                trees = game_map.get_trees_in_canopy(self.coordinate[0], self.coordinate[1])
+                if trees and random.random() < 0.8:
+                    self.climb(trees[0])
+                else:
+                    self.flee_from(closest_predator, dt)
             else:
-                self.flee_from(closest_predator, dt) # 0.1 상수 대신 dt 사용
-        elif not self.on_tree:
-            self.flee_from(closest_predator, dt)
+                self.flee_from(closest_predator, dt)
+        else:
+            # 나무 위에 앉아 있는 상태라면 근접한 포식자에게 과일 투척
+            if dist <= 100.0 and self.inventory > 0:
+                self.throw_fruit(closest_predator)
 
     def update(self, dt: float, game_map, weather, animals: List[Animal]):
         Animal.update(self, dt, game_map, weather, animals)
         if not self.alive or self.is_stunned:
             return
 
+        if self.throw_cooldown > 0:
+            self.throw_cooldown -= dt
+
+        # [계획서 사양 구현] 나무가 부서지면 낙하 처리
         if self.on_tree and self.current_tree and self.current_tree.broken:
             self.fall_from_tree()
 
         predators = self.detect_predators(animals, game_map)
         if predators:
             self.react_to_predator(dt, predators, game_map)
+            self.target_coord = None
         else:
             if not self.on_tree:
-                self.move(dt) # 나무 위에 없을 때 기본 이동
-        
-        if self.on_tree:
-            self.recover_stamina(dt, rate=20.0)
-            if random.random() < 0.02 * dt:
-                self.inventory = min(10, self.inventory + 1)
+                # 배회하며 안전한 나무 찾아 이동하기
+                self.wander_timer -= dt
+                if self.wander_timer <= 0 or not self.target_coord:
+                    self.wander_timer = random.uniform(2.5, 5.0)
+                    nearby_trees = [t for t in game_map.trees if not t.broken and self.distance_to(t.coordinate) < 350.0]
+                    if nearby_trees and random.random() < 0.5:
+                        self.target_coord = list(random.choice(nearby_trees).coordinate)
+                    else:
+                        rx = self.coordinate[0] + random.uniform(-180.0, 180.0)
+                        ry = self.coordinate[1] + random.uniform(-180.0, 180.0)
+                        rx = max(32.0, min(float(game_map.pixel_width - 32), rx))
+                        ry = max(32.0, min(float(game_map.pixel_height - 32), ry))
+                        self.target_coord = [rx, ry]
+                
+                self.move(dt, self.target_coord, speed_multiplier=0.75)
+                
+                # 나무 밑을 지나가다가 낮은 확률로 자동 등반
+                trees = game_map.get_trees_in_canopy(self.coordinate[0], self.coordinate[1])
+                if trees and random.random() < 0.05:
+                    self.climb(trees[0])
+            else:
+                # 나무 위 휴식 중: 스태미나 고속 회복 및 일정 간격으로 야생 과일 채집
+                self.recover_stamina(dt, rate=20.0)
+                if random.random() < 0.06 * dt:
+                    self.inventory = min(10, self.inventory + 1)
+                
+                # 심각하게 배고파지면 나무 밑으로 하강
+                if self.hunger > 70 and random.random() < 0.02 * dt:
+                    self.on_tree = False
+                    self.current_tree = None
+                    self.environment_status = "land"
+                    print(f"🐒 [{self.name}]가 먹이를 구하러 지상으로 내려왔습니다.")
 
 
 # ==========================================
 # 3. 앵무새 (Parrot)
 # ==========================================
-# 최강빈 조원이 만든 클래스가 choi_animals.py 에 있다고 가정
-try:
-    from Choi_animals import FlyingAnimal
-except ImportError:
-    # FlyingAnimal이 없을 경우 오류를 막기 위해 Animal 상속으로 임시 대체
-    FlyingAnimal = Animal 
-
 class Parrot(FlyingAnimal, Prey):
     SPECIES_VISION_RANGE = 400.0  
     SPECIES_VISION_ANGLE = 360.0
+    minimap_color = (255, 60, 60)  # 미니맵에 표시할 밝은 빨간색
 
     def __init__(self, name: str, coordinate: Tuple[float, float], **kwargs):
         super().__init__(name, coordinate, danger_range=250.0, **kwargs)
         self.alert_range = 300.0
         self.max_speed = 70.0 
+        self.flying_speed = 180.0
         
-        # __init__에서의 self.fly()는 dt 인자가 없어 오류를 유발하므로 삭제했습니다.
-        if hasattr(self, 'flying_speed'):
-            self.flying_speed = 180.0
+        self.target_coord: Optional[List[float]] = None
+        self.wander_timer = 0.0
+        self.alert_cooldown = 0.0
+
+        # 💡 1. 여기서 앵무새 전용 이미지를 설정
+        self.image_path = "parrot.png"  # 앵무새 이미지 파일명
+        self.image = None
+        
+        # 이미지가 캐시에 없으면 최초 1회 로드
+        if self.image_path not in Lee:
+            try:
+                loaded_img = pygame.image.load(self.image_path).convert_alpha()
+                Lee[self.image_path] = loaded_img
+            except Exception as e:
+                print(f"⚠️ {name} 이미지 로드 실패: {e}")
+                # 💡 [핵심] 실패하더라도 딕셔너리에 None을 넣어줘야함
+                Lee[self.image_path] = None
+        orig_img = Lee[self.image_path]
+        orig_w, orig_h = orig_img.get_size() # 원본 이미지의 가로, 세로 픽셀
+            
+        # 동물의 크기(size)를 기준으로 최대 렌더링 크기 설정
+        target_max_size = int(self.size * 2.5)
+            
+        # 가로와 세로 중 더 긴 쪽을 기준으로 축소/확대 비율(scale_factor)을 계산
+        scale_factor = target_max_size / max(orig_w, orig_h)
+            
+        # 구한 비율을 가로, 세로에 똑같이 곱해주어 비율 유지
+        new_w = int(orig_w * scale_factor)
+        new_h = int(orig_h * scale_factor)
+            
+        # 새로운 가로, 세로 크기로 스케일링
+        self.image = pygame.transform.scale(orig_img, (new_w, new_h))
+
+    def draw(self, screen: pygame.Surface, camera):
+        if not self.alive:
+            return
+
+        if self.image:
+            # 만약 이미지가 정상적으로 로드되었다면 이미지로 그림
+            # 화면 좌표 계산
+            sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
+            
+            # 💡 [핵심 수정] 이미지의 현재 가로, 세로 길이에 각각 카메라 줌 비율을 곱해줍니다!
+            new_w = int(self.image.get_width() * camera.zoom)
+            new_h = int(self.image.get_height() * camera.zoom)
+                
+            # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
+            scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
+            scaled_image = pygame.transform.flip(scaled_image, True, False) # 뱀장어는 이미지 바라보는 방향이 반대라 좌우 반전
+            scaled_image = pygame.transform.rotate(scaled_image, 20) # 뱀장어는 살짝 기울어져 있음
+
+            # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
+            angle_deg = math.degrees(-self.facing_angle)
+            rotated_image = pygame.transform.rotate(scaled_image, angle_deg)
+                
+            # 이미지 출력 (중심점 맞추기)
+            rect = rotated_image.get_rect(center=(sx, sy))
+            screen.blit(rotated_image, rect)
+                
+            # 체력바 렌더링
+            hp_ratio = self.hp / self.max_hp
+            bar_w = 30 * camera.zoom
+            bar_h = 4 * camera.zoom
+            # 체력바 위치도 이미지 세로 크기에 맞춰 유동적으로 조절
+            pygame.draw.rect(screen, (220, 60, 60), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w, bar_h))
+            pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w * hp_ratio, bar_h))
+        else:
+            # 이미지 로드 실패 시 기본 원으로 그리기(부모 클래스)
+            super().draw(screen, camera)
 
     def make_alert_sound(self, animals: List[Animal]):
-        print(f"🦜 {self.name}가 포식자 발견 경고음을 냅니다!!")
-        for animal in animals:
-            if animal is not self and animal.alive and self.distance_to(animal) <= self.alert_range:
-                if isinstance(animal, Prey):
-                    animal.recover_stamina(1.0, rate=50.0)
-                    animal.predator_detected = True 
+        """[계획서 사양 구현] 포식자 탐색 후 주변 동물들에게 알람을 보내 스피드 증가 및 스태미나를 보충해줍니다."""
+        if self.alert_cooldown <= 0:
+            self.alert_cooldown = 6.0  # 알람 간격 제한
+            print(f"🦜 [{self.name}]가 크고 날카로운 경고 비명을 지릅니다! 근처 동물들의 이동 속도가 증가합니다!")
+            
+            for animal in animals:
+                if animal is not self and animal.alive and self.distance_to(animal) <= self.alert_range:
+                    if isinstance(animal, Prey):
+                        # 스태미나 긴급 주입 및 도주 본능 자극
+                        animal.recover_stamina(1.0, rate=60.0)
+                        animal.predator_detected = True 
+                        
+                        # 일시적인 도망 전용 가속 버프 타이머 부여 (이미 존재하지 않을 때만 중첩 제한으로 작동)
+                        if not hasattr(animal, 'speed_boost_timer'):
+                            animal.speed_boost_timer = 5.0
+                            animal.max_speed *= 1.35  # 이동 속도 35% 증폭
+                            print(f"  ⚡ [{animal.name}]이(가) 공중 경보를 전해 듣고 가속 버프를 얻어 기민하게 움직입니다!")
 
     def update(self, dt: float, game_map, weather, animals: List[Animal]):
-        # 다중 상속 버그 방지를 위해 Animal.update 호출
-        Animal.update(self, dt, game_map, weather, animals)
+        if self.alert_cooldown > 0:
+            self.alert_cooldown -= dt
+
+        # 버프가 걸린 대상 동물들의 속도를 제한 시간 경과 후 정상으로 돌려놓는 스케줄링 처리
+        for animal in animals:
+            if hasattr(animal, 'speed_boost_timer'):
+                animal.speed_boost_timer -= dt
+                if animal.speed_boost_timer <= 0:
+                    animal.max_speed /= 1.35
+                    delattr(animal, 'speed_boost_timer')
+                    print(f"  🐢 [{animal.name}]의 앵무새 경고 가속 버프가 만료되었습니다.")
+
+        # FlyingAnimal의 비행/활공 물리학 및 에너지를 유지하기 위해 부모 업데이트 실행
+        FlyingAnimal.update(self, dt, game_map, weather, animals)
         
         if not self.alive or self.is_stunned:
             return
@@ -202,12 +522,21 @@ class Parrot(FlyingAnimal, Prey):
             closest = min(predators, key=lambda p: self.distance_to(p))
             if self.distance_to(closest) < self.danger_range:
                 self.flee_from(closest, dt)
-                
-                if random.random() < 0.05: 
+                if random.random() < 0.15: 
                     self.make_alert_sound(animals)
+            self.target_coord = None
         else:
-            # 포식자가 없을 때 비행하며 이동
-            if hasattr(self, 'fly'):
-                self.fly(dt)
-            else:
-                self.move(dt)
+            # 밀림 상공 위를 평온하게 선회하는 공중 정찰/배회 메커니즘
+            self.wander_timer -= dt
+            if self.wander_timer <= 0 or not self.target_coord:
+                self.wander_timer = random.uniform(4.0, 7.5)
+                rx = self.coordinate[0] + random.uniform(-400.0, 400.0)
+                ry = self.coordinate[1] + random.uniform(-400.0, 400.0)
+                
+                rx = max(32.0, min(float(game_map.pixel_width - 32), rx))
+                ry = max(32.0, min(float(game_map.pixel_height - 32), ry))
+                self.target_coord = [rx, ry]
+            
+            self.move(dt, self.target_coord)
+            if self.distance_to(self.target_coord) < 15.0:
+                self.target_coord = None
