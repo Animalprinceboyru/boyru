@@ -425,6 +425,8 @@ class Animal:
             dist = self.distance_to(self.couple)
             if dist > self.COUPLE_RANGE * 1.5:
                 self.move(dt=0.1, target=self.couple.coordinate, speed_multiplier=1.2)
+                return self.couple.coordinate
+        return None
 
     # ── 집 / 번식 ───────────────────────────────
 
@@ -710,7 +712,7 @@ class Predator(Animal):
         elif self.is_seeking_water and self._water_target:
             self.move(dt, self._water_target)
         else:
-            couple_tgt = self._couple_target()
+            couple_tgt = self.couple_follow()
             self.move(dt, couple_tgt)  # None이면 move(dt, None) → 관성 이동과 동일
 
 
@@ -844,5 +846,5 @@ class Prey(Animal):
         else:
             self.predator_detected = False
             self.stop_fleeing()
-            couple_tgt = self._couple_target()
+            couple_tgt = self.couple_follow()
             self.move(dt, couple_tgt)
