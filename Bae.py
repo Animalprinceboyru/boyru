@@ -7,6 +7,7 @@ from animal import Animal, Predator, Prey, Egg, TILE_SIZE
 
 Bae = {}
 
+
 # ════════════════════════════════════════════════
 #  Anaconda
 # ════════════════════════════════════════════════
@@ -88,6 +89,7 @@ class Anaconda(Predator):
         # 새로운 가로, 세로 크기로 스케일링
         self.image = pygame.transform.scale(orig_img, (new_w, new_h))
 
+
         # ── 아나콘다 전용 속성 ──
         self.choke_range: float = choke_range
         self.hidden: bool = False
@@ -105,44 +107,6 @@ class Anaconda(Predator):
         self._ambush_wait_time: float = ambush_wait_time
         self._ambush_rush_speed: float = 2.5
         self._target: Optional[Animal] = None
-    
-    # 💡 2. 부모(animal.py)의 draw 함수 오버라이딩
-    def draw(self, screen: pygame.Surface, camera):
-        if not self.alive:
-            return
-
-        if self.image:
-            # 만약 이미지가 정상적으로 로드되었다면 이미지로 그림
-            # 화면 좌표 계산
-            sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
-            
-            # 💡 [핵심 수정] 이미지의 현재 가로, 세로 길이에 각각 카메라 줌 비율을 곱해줍니다!
-            new_w = int(self.image.get_width() * camera.zoom)
-            new_h = int(self.image.get_height() * camera.zoom)
-                
-            # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
-            scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
-            scaled_image = pygame.transform.flip(scaled_image, True, False) # 코뿔소는 이미지 바라보는 방향이 반대라 좌우 반전
-
-            # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
-            angle_deg = math.degrees(-self.facing_angle)
-            rotated_image = pygame.transform.rotate(scaled_image, angle_deg)
-                
-            # 이미지 출력 (중심점 맞추기)
-            rect = rotated_image.get_rect(center=(sx, sy))
-            screen.blit(rotated_image, rect)
-                
-            # 체력바 렌더링
-            hp_ratio = self.hp / self.max_hp
-            bar_w = 30 * camera.zoom
-            bar_h = 4 * camera.zoom
-            # 체력바 위치도 이미지 세로 크기에 맞춰 유동적으로 조절
-            pygame.draw.rect(screen, (220, 60, 60), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w, bar_h))
-            pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w * hp_ratio, bar_h))
-        else:
-            # 이미지 로드 실패 시 기본 원으로 그리기(부모 클래스)
-            super().draw(screen, camera)
-
 
     # ── 은신 ────────────────────────────────────
 
@@ -412,6 +376,45 @@ class Anaconda(Predator):
             coordinate=tuple(self.coordinate),
         )
 
+    # ── 렌더링 ──────────────────────────────────
+
+    def draw(self, screen: pygame.Surface, camera):
+        if not self.alive:
+            return
+
+        if self.image:
+            # 만약 이미지가 정상적으로 로드되었다면 이미지로 그림
+            # 화면 좌표 계산
+            sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
+            
+            # 💡 [핵심 수정] 이미지의 현재 가로, 세로 길이에 각각 카메라 줌 비율을 곱해줍니다!
+            new_w = int(self.image.get_width() * camera.zoom)
+            new_h = int(self.image.get_height() * camera.zoom)
+                
+            # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
+            scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
+            scaled_image = pygame.transform.flip(scaled_image, True, False) # 뱀장어는 이미지 바라보는 방향이 반대라 좌우 반전
+            scaled_image = pygame.transform.rotate(scaled_image, 20) # 뱀장어는 살짝 기울어져 있음
+
+            # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
+            angle_deg = math.degrees(-self.facing_angle)
+            rotated_image = pygame.transform.rotate(scaled_image, angle_deg)
+                
+            # 이미지 출력 (중심점 맞추기)
+            rect = rotated_image.get_rect(center=(sx, sy))
+            screen.blit(rotated_image, rect)
+                
+            # 체력바 렌더링
+            hp_ratio = self.hp / self.max_hp
+            bar_w = 30 * camera.zoom
+            bar_h = 4 * camera.zoom
+            # 체력바 위치도 이미지 세로 크기에 맞춰 유동적으로 조절
+            pygame.draw.rect(screen, (220, 60, 60), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w, bar_h))
+            pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w * hp_ratio, bar_h))
+        else:
+            # 이미지 로드 실패 시 기본 원으로 그리기(부모 클래스)
+            super().draw(screen, camera)
+
     def __repr__(self):
         return (f"<Anaconda '{self.name}' hp={self.hp}/{self.max_hp} ")
                 
@@ -472,6 +475,39 @@ def _find_shore_positions(game_map, cx, cy, search_radius_tiles=20, max_candidat
     return [(px, py) for _, px, py in candidates[:max_candidates]]
 
 
+import random
+import math
+import pygame
+from typing import Tuple, Optional, List
+
+from animal import Animal, Predator, Prey, Egg
+from map_system import TileType, TILE_SIZE
+
+_WATER_TILES = (TileType.WATER, TileType.DEEP_WATER)
+
+def _is_water(game_map, tx, ty):
+    t = game_map.get_tile(tx, ty)
+    return t in _WATER_TILES
+
+def _find_shore_positions(game_map, cx, cy, search_radius_tiles=20, max_candidates=12):
+    origin_tx = int(cx // TILE_SIZE)
+    origin_ty = int(cy // TILE_SIZE)
+    candidates = []
+    for dy in range(-search_radius_tiles, search_radius_tiles + 1):
+        for dx in range(-search_radius_tiles, search_radius_tiles + 1):
+            tx, ty = origin_tx + dx, origin_ty + dy
+            if not _is_water(game_map, tx, ty):
+                continue
+            if any(not _is_water(game_map, tx + ndx, ty + ndy)
+                   for ndx, ndy in ((1,0),(-1,0),(0,1),(0,-1))):
+                px = (tx + 0.5) * TILE_SIZE
+                py = (ty + 0.5) * TILE_SIZE
+                dist = math.hypot(px - cx, py - cy)
+                candidates.append((dist, px, py))
+    candidates.sort()
+    return [(px, py) for _, px, py in candidates[:max_candidates]]
+
+
 class Crocodile(Predator):
     """
     악어.
@@ -481,6 +517,8 @@ class Crocodile(Predator):
     """
     SPECIES_VISION_RANGE = 230.0
     SPECIES_VISION_ANGLE = 110.0
+    HUNT_TARGETS = {"Capybara", "Monkey", "Parrot", "ToxicFrog"}
+    HATCH_TIME   = 120.0
     minimap_color = (0, 200, 200)
 
     _IDLE          = "idle"
@@ -506,22 +544,6 @@ class Crocodile(Predator):
             environment_status="water",
             **kwargs,
         )
-        self.water_max_speed    = water_max_speed
-        self.water_max_accel    = water_max_accel
-        self.rush_max_speed     = rush_max_speed
-        self.rush_max_accel     = rush_max_accel
-        self.land_stamina_drain = land_stamina_drain
-        self.drink_range        = drink_range
-        self.lurk_timeout       = lurk_timeout
-        self.death_roll_dps     = death_roll_dps
-        self.death_roll_duration = death_roll_duration
-
-        self.submerged  = False
-        self._state     = self._IDLE
-        self._target    = None
-        self._shore_pos = None
-        self._lurk_timer = 0.0
-        self._roll_timer = 0.0
 
         # 💡 1. 여기서 악어 전용 이미지를 설정
         self.image_path = "crocodile.png"  # 악어 이미지 파일명
@@ -552,42 +574,22 @@ class Crocodile(Predator):
         # 새로운 가로, 세로 크기로 스케일링
         self.image = pygame.transform.scale(orig_img, (new_w, new_h))
 
-    # 💡 2. 부모(animal.py)의 draw 함수 오버라이딩
-    def draw(self, screen: pygame.Surface, camera):
-        if not self.alive:
-            return
+        self.water_max_speed    = water_max_speed
+        self.water_max_accel    = water_max_accel
+        self.rush_max_speed     = rush_max_speed
+        self.rush_max_accel     = rush_max_accel
+        self.land_stamina_drain = land_stamina_drain
+        self.drink_range        = drink_range
+        self.lurk_timeout       = lurk_timeout
+        self.death_roll_dps     = death_roll_dps
+        self.death_roll_duration = death_roll_duration
 
-        if self.image:
-            # 만약 이미지가 정상적으로 로드되었다면 이미지로 그림
-            # 화면 좌표 계산
-            sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
-            
-            # 💡 [핵심 수정] 이미지의 현재 가로, 세로 길이에 각각 카메라 줌 비율을 곱해줍니다!
-            new_w = int(self.image.get_width() * camera.zoom)
-            new_h = int(self.image.get_height() * camera.zoom)
-                
-            # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
-            scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
-            scaled_image = pygame.transform.flip(scaled_image, True, False) # 코뿔소는 이미지 바라보는 방향이 반대라 좌우 반전
-
-            # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
-            angle_deg = math.degrees(-self.facing_angle)
-            rotated_image = pygame.transform.rotate(scaled_image, angle_deg)
-                
-            # 이미지 출력 (중심점 맞추기)
-            rect = rotated_image.get_rect(center=(sx, sy))
-            screen.blit(rotated_image, rect)
-                
-            # 체력바 렌더링
-            hp_ratio = self.hp / self.max_hp
-            bar_w = 30 * camera.zoom
-            bar_h = 4 * camera.zoom
-            # 체력바 위치도 이미지 세로 크기에 맞춰 유동적으로 조절
-            pygame.draw.rect(screen, (220, 60, 60), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w, bar_h))
-            pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w * hp_ratio, bar_h))
-        else:
-            # 이미지 로드 실패 시 기본 원으로 그리기(부모 클래스)
-            super().draw(screen, camera)
+        self.submerged  = False
+        self._state     = self._IDLE
+        self._target    = None
+        self._shore_pos = None
+        self._lurk_timer = 0.0
+        self._roll_timer = 0.0
 
     def _set_state(self, state, target=None):
         self._state      = state
@@ -719,6 +721,13 @@ class Crocodile(Predator):
         super().update(dt, game_map, weather, animals)
         if not self.alive:
             return
+
+        # 커플 맺기 시도
+        if self.couple is None:
+            for a in animals:
+                if self.try_form_couple(a):
+                    break
+
         self.stop_hunt()
         self._apply_land_drain(dt)
         if (self.environment_status != "water"
@@ -727,14 +736,57 @@ class Crocodile(Predator):
         self._update_behavior(dt, animals, game_map)
 
     def make_child(self):
+        return Egg(
+            coordinate=self.home_coordinate or tuple(self.coordinate),
+            parent=self,
+            hatch_time=self.HATCH_TIME,
+        )
+
+    def _spawn_child(self) -> "Crocodile":
         return Crocodile(
-            name=f"Crocodile_{random.randint(1000,9999)}",
+            name=f"Crocodile_{random.randint(1000, 9999)}",
             coordinate=tuple(self.coordinate),
         )
+
+    def draw(self, screen: pygame.Surface, camera):
+        if not self.alive:
+            return
+
+        if self.image:
+            # 만약 이미지가 정상적으로 로드되었다면 이미지로 그림
+            # 화면 좌표 계산
+            sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
+            
+            # 💡 [핵심 수정] 이미지의 현재 가로, 세로 길이에 각각 카메라 줌 비율을 곱해줍니다!
+            new_w = int(self.image.get_width() * camera.zoom)
+            new_h = int(self.image.get_height() * camera.zoom)
+                
+            # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
+            scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
+            scaled_image = pygame.transform.flip(scaled_image, True, False) # 뱀장어는 이미지 바라보는 방향이 반대라 좌우 반전
+            scaled_image = pygame.transform.rotate(scaled_image, 20) # 뱀장어는 살짝 기울어져 있음
+
+            # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
+            angle_deg = math.degrees(-self.facing_angle)
+            rotated_image = pygame.transform.rotate(scaled_image, angle_deg)
+                
+            # 이미지 출력 (중심점 맞추기)
+            rect = rotated_image.get_rect(center=(sx, sy))
+            screen.blit(rotated_image, rect)
+                
+            # 체력바 렌더링
+            hp_ratio = self.hp / self.max_hp
+            bar_w = 30 * camera.zoom
+            bar_h = 4 * camera.zoom
+            # 체력바 위치도 이미지 세로 크기에 맞춰 유동적으로 조절
+            pygame.draw.rect(screen, (220, 60, 60), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w, bar_h))
+            pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w * hp_ratio, bar_h))
+        else:
+            # 이미지 로드 실패 시 기본 원으로 그리기(부모 클래스)
+            super().draw(screen, camera)
 
     def __repr__(self):
         return (f"<Crocodile '{self.name}' hp={self.hp}/{self.max_hp} "
                 f"state={self._state} submerged={self.submerged} "
                 f"hunger={self.hunger:.0f} "
                 f"pos=({self.coordinate[0]:.0f},{self.coordinate[1]:.0f})>")
-

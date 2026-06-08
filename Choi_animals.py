@@ -772,3 +772,161 @@ class ToxicFrog(Animal):
                 
                 if self.distance_to(self.target_coord) < 10.0:
                     self.target_coord = None
+
+# ==========================================
+# 5. 모기 (Mosquito) - 약하지만 질병을 퍼뜨리는 포식자
+# ==========================================
+class Mosquito(FlyingAnimal, Predator):
+    """
+    모기 클래스.
+    - 반격 능력이 거의 없는 최약체지만 번식이 매우 빠름.
+    - 동족(모기)을 제외한 맵 상의 모든 동물을 추격해 피를 빨아먹음.
+    - 피를 빨면 높은 확률(70%)로 타겟에게 독(질병) 상태이상을 부여함.
+    """
+    SPECIES_VISION_RANGE: float = 250.0
+    SPECIES_VISION_ANGLE: float = 360.0
+    HATCH_TIME: float = 15.0  # 번식 주기가 매우 짧음 (15초 부화)
+
+    def __init__(self, name: str, coordinate: Tuple[float, float], **kwargs):
+        # 기본 스탯 설정 (모기는 체력과 사이즈가 매우 작음)
+        kwargs.setdefault('hp', 10)
+        kwargs.setdefault('max_hp', 10)
+        kwargs.setdefault('size', 15.0)
+        kwargs.setdefault('max_speed', 110.0)
+        
+        # FlyingAnimal과 Predator의 속성을 모두 활용하기 위한 초기화
+        super().__init__(
+            name=name,
+            coordinate=coordinate,
+            attack_range=15.0,        # 모기의 짧은 흡혈 사거리
+            hunt_range=250.0,         # 피 냄새를 맡는 넓은 범위
+            attack_success_rate=0.85, # 잽싸게 물기 때문에 성공률이 높음
+            hunger_limit=80.0,        # 배고픔을 자주 느낌
+            chase_speed_mul=1.5,      # 추격 시 1.5배속 이동
+            **kwargs
+        )
+        self.flying_speed = 140.0
+        self.is_flying = True
+
+        # 💡 모기 전용 이미지 설정
+        self.image_path = "mosquito.png"  # 모기 이미지 파일명
+        self.image = None
+        
+        # 이미지가 캐시에 없으면 최초 1회 로드
+        if self.image_path not in CHOI_IMAGE_CACHE:
+            try:
+                loaded_img = pygame.image.load(self.image_path).convert_alpha()
+                CHOI_IMAGE_CACHE[self.image_path] = loaded_img
+            except Exception as e:
+                print(f"⚠️ {name} 이미지 로드 실패: {e}")
+                CHOI_IMAGE_CACHE[self.image_path] = None
+                
+        orig_img = CHOI_IMAGE_CACHE[self.image_path]
+        if orig_img:
+            orig_w, orig_h = orig_img.get_size()
+            target_max_size = int(self.size * 2.5)
+            scale_factor = target_max_size / max(orig_w, orig_h)
+            new_w = int(orig_w * scale_factor)
+            new_h = int(orig_h * scale_factor)
+            self.image = pygame.transform.scale(orig_img, (new_w, new_h))
+
+    def _is_prey(self, animal: "Animal") -> bool:
+        """모기는 다른 모기만 아니면 종류를 가리지 않고 피를 빨 대상으로 삼습니다."""
+        return not isinstance(animal, Mosquito)
+
+    def draw(self, screen: pygame.Surface, camera):
+        if not self.alive:
+            return
+
+        if self.image:
+            sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
+            new_w = int(self.image.get_width() * camera.zoom)
+            new_h = int(self.image.get_height() * camera.zoom)
+            scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
+
+            angle_deg = math.degrees(-self.facing_angle)
+            rotated_image = pygame.transform.rotate(scaled_image, angle_deg)
+                
+            rect = rotated_image.get_rect(center=(sx, sy))
+            screen.blit(rotated_image, rect)
+                
+            # 체력바 렌더링 (모기는 매우 작게)
+            hp_ratio = self.hp / self.max_hp
+            bar_w = 15 * camera.zoom
+            bar_h = 3 * camera.zoom
+            pygame.draw.rect(screen, (220, 60, 60), (sx - bar_w/2, sy - (new_h/2) - 8, bar_w, bar_h))
+            pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (new_h/2) - 8, bar_w * hp_ratio, bar_h))
+        else:
+            super().draw(screen, camera)
+
+    def try_attack(self, target: Animal, base_damage: float = 2.0, food_value: float = 20.0) -> bool:
+        """흡혈 공격: 데미지는 매우 낮지만 감염을 유발함"""
+        if not target.alive:
+            self.stop_hunt()
+            return False
+            
+        if self.distance_to(target) <= self.attack_range:
+            if random.random() < self.attack_success_rate:
+                print(f"🦟 [{self.name}]이(가) {target.name}의 피를 빨았습니다!")
+                # 흡혈 데미지 (매우 낮음)
+                target.take_damage(base_damage, source="mosquito_bite", attacker=self)
+                self.eat(food_value)  # 피를 먹고 배고픔 회복
+                
+                # 💡 핵심: 70% 확률로 상대에게 독(질병) 상태이상 부여
+                if random.random() < 0.70:
+                    print(f"🦠 앗! {target.name}이(가) 모기에게 물려 질병에 감염되었습니다!")
+                    # 15초 동안 초당 2.0의 독 데미지, 이동속도 30% 감소
+                    target.apply_poison(duration=15.0, dps=2.0, speed_multiplier=0.7)
+                
+                # 피를 한 번 빨면 배부르므로 추격을 멈춤
+                self.stop_hunt()
+                return True
+        return False
+
+    def make_child(self):
+        """번식: 스태미나 소모가 매우 적고 성공 확률이 높음"""
+        breed_cost = 5.0  # 번식 비용이 거의 없음
+        if self.stamina < breed_cost or (self.couple and self.couple.stamina < breed_cost):
+            return None
+            
+        self.use_stamina(breed_cost)
+        if self.couple:
+            self.couple.use_stamina(breed_cost)
+            
+        print(f"🦟🥚 [{self.name}]이(가) 대량의 모기 알을 낳았습니다!")
+        return Egg(self.coordinate, self, hatch_time=self.HATCH_TIME)
+
+    def _spawn_child(self):
+        child_sex = random.choice(["male", "female"])
+        child = type(self)(name=f"Mosquito_{random.randint(1000, 9999)}", coordinate=self.coordinate[:], sex=child_sex)
+        
+        # 기본 부모 능력치에서 유전 변이 폭을 조금 넓게 줌
+        child.max_hp = int(self.max_hp * random.uniform(0.8, 1.2))
+        child.hp = child.max_hp
+        child.max_stamina = self.max_stamina * random.uniform(0.9, 1.1)
+        child.max_speed = self.max_speed * random.uniform(0.9, 1.2)
+        child.flying_speed = self.flying_speed * random.uniform(0.9, 1.2)
+        
+        return child
+
+    def update(self, dt: float, game_map, weather, animals: List[Animal]):
+        super().update(dt, game_map, weather, animals)
+        
+        if not self.alive or self.is_stunned:
+            return
+            
+        # 사냥 중이 아닐 때 모기 특유의 잦은 궤도 변경 (윙윙거림)
+        if not getattr(self, 'is_hunting', False) and not getattr(self, 'is_fleeing', False):
+            if not getattr(self, 'target_coord', None) or random.random() < 0.05:
+                # 짧은 반경 안에서 목표지점을 자주 갱신
+                rx = self.coordinate[0] + random.uniform(-150.0, 150.0)
+                ry = self.coordinate[1] + random.uniform(-150.0, 150.0)
+                # 맵 바깥으로 나가지 않도록 조정
+                rx = max(0.0, min(float(game_map.pixel_width), rx))
+                ry = max(0.0, min(float(game_map.pixel_height), ry))
+                self.target_coord = [rx, ry]
+                
+            if getattr(self, 'target_coord', None):
+                self.move(dt, target=self.target_coord, speed_multiplier=0.6)
+                if self.distance_to(self.target_coord) < 10.0:
+                    self.target_coord = None
