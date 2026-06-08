@@ -359,6 +359,32 @@ class Anaconda(Predator):
             # 육지 추격 중이면 계속 추격
             if self._state == self._STATE_CHASING:
                 self._update_behavior(dt, animals, game_map)
+        
+        if not getattr(self, 'is_hunting', False) and not getattr(self, 'is_fleeing', False):
+            # 1. 목표가 없을 때 일정 확률(약 2%)로 새 목표 지점 설정
+            if not getattr(self, '_roam_target', None):
+                if random.random() < 0.02: 
+                    # 현재 위치를 기준으로 반경 200 픽셀 내의 랜덤 좌표 생성
+                    rx = self.coordinate[0] + random.uniform(-200.0, 200.0)
+                    ry = self.coordinate[1] + random.uniform(-200.0, 200.0)
+                    
+                    # 맵 바깥으로 벗어나지 않도록 좌표 보정
+                    if game_map:
+                        rx = max(0.0, min(float(game_map.pixel_width), rx))
+                        ry = max(0.0, min(float(game_map.pixel_height), ry))
+                    
+                    self._roam_target = [rx, ry]
+            
+            # 2. 목표가 설정되어 있다면 해당 위치로 이동 (평소엔 0.5배속으로 천천히)
+            if getattr(self, '_roam_target', None):
+                self.move(dt, target=self._roam_target, speed_multiplier=0.5)
+                
+                # 3. 목적지에 거의 도달했으면 목표 초기화 (도착 후 대기 상태로 전환)
+                if self.distance_to(self._roam_target) < 15.0:
+                    self._roam_target = None
+        else:
+            # 바쁠 때는 배회 타겟을 초기화하여 꼬임 방지
+            self._roam_target = None
 
     # ── 번식 ────────────────────────────────────
 
@@ -734,6 +760,32 @@ class Crocodile(Predator):
                 and self._state == self._LURKING):
             self._set_state(self._IDLE)
         self._update_behavior(dt, animals, game_map)
+
+        if not getattr(self, 'is_hunting', False) and not getattr(self, 'is_fleeing', False):
+            # 1. 목표가 없을 때 일정 확률(약 2%)로 새 목표 지점 설정
+            if not getattr(self, '_roam_target', None):
+                if random.random() < 0.02: 
+                    # 현재 위치를 기준으로 반경 200 픽셀 내의 랜덤 좌표 생성
+                    rx = self.coordinate[0] + random.uniform(-200.0, 200.0)
+                    ry = self.coordinate[1] + random.uniform(-200.0, 200.0)
+                    
+                    # 맵 바깥으로 벗어나지 않도록 좌표 보정
+                    if game_map:
+                        rx = max(0.0, min(float(game_map.pixel_width), rx))
+                        ry = max(0.0, min(float(game_map.pixel_height), ry))
+                    
+                    self._roam_target = [rx, ry]
+            
+            # 2. 목표가 설정되어 있다면 해당 위치로 이동 (평소엔 0.5배속으로 천천히)
+            if getattr(self, '_roam_target', None):
+                self.move(dt, target=self._roam_target, speed_multiplier=0.5)
+                
+                # 3. 목적지에 거의 도달했으면 목표 초기화 (도착 후 대기 상태로 전환)
+                if self.distance_to(self._roam_target) < 15.0:
+                    self._roam_target = None
+        else:
+            # 바쁠 때는 배회 타겟을 초기화하여 꼬임 방지
+            self._roam_target = None
 
     def make_child(self):
         return Egg(
