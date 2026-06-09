@@ -3,6 +3,7 @@ import random
 import math
 from typing import Tuple, Optional, List
 from animal import Animal, Predator, Egg
+import camera
 from map_system import TileType
 
 
@@ -180,6 +181,15 @@ class Rhino(Animal):
     def draw(self, screen: pygame.Surface, camera):
         if not self.alive:
             return
+        
+        # 1. 화면 좌표를 먼저 계산합니다.
+        sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
+    
+        # 💡 [최적화 핵심] 동물이 화면을 완전히 벗어났다면 아예 연산(스케일, 회전)을 하지 않고 종료합니다.
+        # 여유 공간(margin)을 약 100픽셀 정도 두어 자연스럽게 사라지도록 합니다.
+        margin = 100
+        if not (-margin < sx < camera.screen_w + margin and -margin < sy < camera.screen_h + margin):
+            return
 
         if self.image:
             # 만약 이미지가 정상적으로 로드되었다면 이미지로 그림
@@ -312,27 +322,20 @@ class Rhino(Animal):
             if dist_to_target < 10.0:
                 self._stop_charge()
         
+        # Choi_animals.py - Rhino 클래스의 update 메서드 하단
         if not getattr(self, 'is_hunting', False) and not getattr(self, 'is_fleeing', False):
-            # 1. 목표 좌표가 없다면 낮은 확률(약 2%)로 새로운 랜덤 목표지점 생성
             if not getattr(self, 'target_coord', None):
                 if random.random() < 0.5: 
                     rx = self.coordinate[0] + random.uniform(-2000.0, 2000.0)
                     ry = self.coordinate[1] + random.uniform(-2000.0, 2000.0)
-                    # 👇 이 두 줄 추가 (맵 밖으로 벗어나지 않게 자르기)
-                    rx = max(0.0, min(float(game_map.pixel_width), rx))
-                    ry = max(0.0, min(float(game_map.pixel_height), ry))
+                    # 맵 밖으로 벗어나지 않게 자르기 (50픽셀 여유)
+                    rx = max(50.0, min(float(game_map.pixel_width - 50.0), rx))
+                    ry = max(50.0, min(float(game_map.pixel_height - 50.0), ry))
                     self.target_coord = [rx, ry]
             
-            # 2. 목표 좌표가 생겼다면 그곳으로 이동
             if getattr(self, 'target_coord', None):
-                self.move(dt, target=self.target_coord, speed_multiplier=0.5) # 평소엔 천천히 걷기
-                
-                # 3. 목표 지점에 거의 도달했으면 목표 초기화 (다시 가만히 있다가 다른 곳으로 이동)
-                dist_to_target = math.hypot(
-                    self.coordinate[0] - self.target_coord[0],
-                    self.coordinate[1] - self.target_coord[1]
-                )
-                if dist_to_target < 10.0:
+                self.move(dt, target=self.target_coord, speed_multiplier=0.5) 
+                if self.distance_to(self.target_coord) < 15.0:
                     self.target_coord = None
         
 
@@ -381,6 +384,15 @@ class ElectricEel(Predator):
 
     def draw(self, screen: pygame.Surface, camera):
         if not self.alive:
+            return
+        
+        # 1. 화면 좌표를 먼저 계산합니다.
+        sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
+        
+        # 💡 [최적화 핵심] 동물이 화면을 완전히 벗어났다면 아예 연산(스케일, 회전)을 하지 않고 종료합니다.
+        # 여유 공간(margin)을 약 100픽셀 정도 두어 자연스럽게 사라지도록 합니다.
+        margin = 100
+        if not (-margin < sx < camera.screen_w + margin and -margin < sy < camera.screen_h + margin):
             return
 
         if self.image:
@@ -571,42 +583,54 @@ class ElectricEel(Predator):
                     # 수정됨: weather 객체도 함께 넘겨주어 날씨 시너지 확인
                     self.electric_attack(self.hunting_target, animals, weather)
         
-        # 평상시 배회 (물 타일 혹은 육지 찾아서 이동)
         if not getattr(self, 'is_hunting', False) and not getattr(self, 'is_fleeing', False):
             if not getattr(self, 'target_coord', None):
                 if random.random() < 0.05:
-                    # TILE_SIZE(32)로 나누어 현재 타일 칸 번호 구하기
                     cx = int(self.coordinate[0] // 32)
                     cy = int(self.coordinate[1] // 32)
-                    
                     water_tiles = []
-                    for dy in range(-10, 11):
-                        for dx in range(-10, 11):
+                    for dy in range(-15, 16):
+                        for dx in range(-15, 16):
                             tx, ty = cx + dx, cy + dy
-                            
-                            # 💡 [핵심 수정] is_water 대신 확실한 방식으로 물 타일 검사
-                            tile = game_map.get_tile(tx, ty)
-                            if tile in (TileType.WATER, TileType.DEEP_WATER):
-                                water_tiles.append((tx, ty))
+                            # 맵 인덱스 에러 방지
+                            if 0 <= tx < game_map.map_width and 0 <= ty < game_map.map_height:
+                                tile = game_map.get_tile(tx, ty)
+                                if tile in (TileType.WATER, TileType.DEEP_WATER):
+                                    water_tiles.append((tx, ty))
 
                     if water_tiles:
                         chosen_tx, chosen_ty = random.choice(water_tiles)
-                        # 타일 번호를 다시 픽셀 좌표(정중앙)로 변환
                         target_x = chosen_tx * 32 + 16.0
                         target_y = chosen_ty * 32 + 16.0
-                        self.target_coord = [target_x, target_y]
                     else:
-                        # 💡 [핵심 수정] 주변에 물이 아예 없을 경우 에러 없이 단순히 육지 배회
-                        rx = self.coordinate[0] + random.uniform(-300.0, 300.0)
-                        ry = self.coordinate[1] + random.uniform(-300.0, 300.0)
-                        self.target_coord = [rx, ry]
+                        target_x = self.coordinate[0] + random.uniform(-300.0, 300.0)
+                        target_y = self.coordinate[1] + random.uniform(-300.0, 300.0)
+                    
+                    # 맵 이탈 방지
+                    target_x = max(50.0, min(float(game_map.pixel_width - 50.0), target_x))
+                    target_y = max(50.0, min(float(game_map.pixel_height - 50.0), target_y))
+                    self.target_coord = [target_x, target_y]
                         
-            # 목표 지점이 설정되어 있다면 이동
             if getattr(self, 'target_coord', None):
-                self.move(dt, target=self.target_coord)
+                # 수영 부스트 타이머 감소
+                if getattr(self, 'swim_boost_timer', 0) > 0:
+                    self.swim_boost_timer -= dt
+                
+                # 물속이고 스태미나가 충분할 때 확률적으로 고속 수영 발동
+                if (self.environment_status == "water" and 
+                    self.stamina >= 30.0 and 
+                    getattr(self, 'swim_boost_timer', 0) <= 0 and 
+                    random.random() < 0.02):
+                    self.use_stamina(5.0)
+                    self.swim_boost_timer = 1.5 # 1.5초 동안 수영 부스트
+                
+                if getattr(self, 'swim_boost_timer', 0) > 0:
+                    self.swim(dt, target=self.target_coord) # 속도 증가 메서드 호출
+                else:
+                    self.move(dt, target=self.target_coord)
+                    
                 if self.distance_to(self.target_coord) < 15.0:
                     self.target_coord = None
-                        
 
 
 # ==========================================
@@ -653,6 +677,15 @@ class ToxicFrog(Animal):
     
     def draw(self, screen: pygame.Surface, camera):
         if not self.alive:
+            return
+        
+        # 1. 화면 좌표를 먼저 계산합니다.
+        sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
+        
+        # 💡 [최적화 핵심] 동물이 화면을 완전히 벗어났다면 아예 연산(스케일, 회전)을 하지 않고 종료합니다.
+        # 여유 공간(margin)을 약 100픽셀 정도 두어 자연스럽게 사라지도록 합니다.
+        margin = 100
+        if not (-margin < sx < camera.screen_w + margin and -margin < sy < camera.screen_h + margin):
             return
 
         if self.image:
@@ -755,178 +788,25 @@ class ToxicFrog(Animal):
                     elif dist <= 120.0 and self.stamina >= 10.0:
                         self.jump(dt, target=a.coordinate)
                         break
-        # 💡 [추가됨] 평상시 배회 (물속이 아닐 때 확률적으로 점프)
         if not getattr(self, 'is_hunting', False) and not getattr(self, 'is_fleeing', False):
             if not getattr(self, 'target_coord', None):
                 if random.random() < 0.05: 
                     rx = self.coordinate[0] + random.uniform(-150.0, 150.0)
                     ry = self.coordinate[1] + random.uniform(-150.0, 150.0)
+                    # 맵 이탈 방지
+                    rx = max(50.0, min(float(game_map.pixel_width - 50.0), rx))
+                    ry = max(50.0, min(float(game_map.pixel_height - 50.0), ry))
                     self.target_coord = [rx, ry]
             
             if getattr(self, 'target_coord', None):
-                # 물속이 아니고, 스태미나가 충분하며, 일정 확률(예: 3%)일 때 점프 발동!
-                if self.environment_status != "water" and self.stamina >= 10.0 and random.random() < 0.03:
-                    self.jump(dt, target=self.target_coord)
-                else:
-                    self.move(dt, target=self.target_coord, speed_multiplier=1.0)
+                # 점프 부스트 타이머 감소
+                if getattr(self, 'jump_boost_timer', 0) > 0:
+                    self.jump_boost_timer -= dt
                 
-                if self.distance_to(self.target_coord) < 10.0:
-                    self.target_coord = None
-
-# ==========================================
-# 5. 모기 (Mosquito) - 약하지만 질병을 퍼뜨리는 포식자
-# ==========================================
-class Mosquito(FlyingAnimal, Predator):
-    """
-    모기 클래스.
-    - 반격 능력이 거의 없는 최약체지만 번식이 매우 빠름.
-    - 동족(모기)을 제외한 맵 상의 모든 동물을 추격해 피를 빨아먹음.
-    - 피를 빨면 높은 확률(70%)로 타겟에게 독(질병) 상태이상을 부여함.
-    """
-    SPECIES_VISION_RANGE: float = 250.0
-    SPECIES_VISION_ANGLE: float = 360.0
-    HATCH_TIME: float = 15.0  # 번식 주기가 매우 짧음 (15초 부화)
-
-    def __init__(self, name: str, coordinate: Tuple[float, float], **kwargs):
-        # 기본 스탯 설정 (모기는 체력과 사이즈가 매우 작음)
-        kwargs.setdefault('hp', 10)
-        kwargs.setdefault('max_hp', 10)
-        kwargs.setdefault('size', 15.0)
-        kwargs.setdefault('max_speed', 110.0)
-        
-        # FlyingAnimal과 Predator의 속성을 모두 활용하기 위한 초기화
-        super().__init__(
-            name=name,
-            coordinate=coordinate,
-            attack_range=15.0,        # 모기의 짧은 흡혈 사거리
-            hunt_range=250.0,         # 피 냄새를 맡는 넓은 범위
-            attack_success_rate=0.85, # 잽싸게 물기 때문에 성공률이 높음
-            hunger_limit=80.0,        # 배고픔을 자주 느낌
-            chase_speed_mul=1.5,      # 추격 시 1.5배속 이동
-            **kwargs
-        )
-        self.flying_speed = 140.0
-        self.is_flying = True
-
-        # 💡 모기 전용 이미지 설정
-        self.image_path = "mosquito.png"  # 모기 이미지 파일명
-        self.image = None
-        
-        # 이미지가 캐시에 없으면 최초 1회 로드
-        if self.image_path not in CHOI_IMAGE_CACHE:
-            try:
-                loaded_img = pygame.image.load(self.image_path).convert_alpha()
-                CHOI_IMAGE_CACHE[self.image_path] = loaded_img
-            except Exception as e:
-                print(f"⚠️ {name} 이미지 로드 실패: {e}")
-                CHOI_IMAGE_CACHE[self.image_path] = None
-                
-        orig_img = CHOI_IMAGE_CACHE[self.image_path]
-        if orig_img:
-            orig_w, orig_h = orig_img.get_size()
-            target_max_size = int(self.size * 2.5)
-            scale_factor = target_max_size / max(orig_w, orig_h)
-            new_w = int(orig_w * scale_factor)
-            new_h = int(orig_h * scale_factor)
-            self.image = pygame.transform.scale(orig_img, (new_w, new_h))
-
-    def _is_prey(self, animal: "Animal") -> bool:
-        """모기는 다른 모기만 아니면 종류를 가리지 않고 피를 빨 대상으로 삼습니다."""
-        return not isinstance(animal, Mosquito)
-
-    def draw(self, screen: pygame.Surface, camera):
-        if not self.alive:
-            return
-
-        if self.image:
-            sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
-            new_w = int(self.image.get_width() * camera.zoom)
-            new_h = int(self.image.get_height() * camera.zoom)
-            scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
-
-            angle_deg = math.degrees(-self.facing_angle)
-            rotated_image = pygame.transform.rotate(scaled_image, angle_deg)
-                
-            rect = rotated_image.get_rect(center=(sx, sy))
-            screen.blit(rotated_image, rect)
-                
-            # 체력바 렌더링 (모기는 매우 작게)
-            hp_ratio = self.hp / self.max_hp
-            bar_w = 15 * camera.zoom
-            bar_h = 3 * camera.zoom
-            pygame.draw.rect(screen, (220, 60, 60), (sx - bar_w/2, sy - (new_h/2) - 8, bar_w, bar_h))
-            pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (new_h/2) - 8, bar_w * hp_ratio, bar_h))
-        else:
-            super().draw(screen, camera)
-
-    def try_attack(self, target: Animal, base_damage: float = 2.0, food_value: float = 20.0) -> bool:
-        """흡혈 공격: 데미지는 매우 낮지만 감염을 유발함"""
-        if not target.alive:
-            self.stop_hunt()
-            return False
-            
-        if self.distance_to(target) <= self.attack_range:
-            if random.random() < self.attack_success_rate:
-                print(f"🦟 [{self.name}]이(가) {target.name}의 피를 빨았습니다!")
-                # 흡혈 데미지 (매우 낮음)
-                target.take_damage(base_damage, source="mosquito_bite", attacker=self)
-                self.eat(food_value)  # 피를 먹고 배고픔 회복
-                
-                # 💡 핵심: 70% 확률로 상대에게 독(질병) 상태이상 부여
-                if random.random() < 0.70:
-                    print(f"🦠 앗! {target.name}이(가) 모기에게 물려 질병에 감염되었습니다!")
-                    # 15초 동안 초당 2.0의 독 데미지, 이동속도 30% 감소
-                    target.apply_poison(duration=15.0, dps=2.0, speed_multiplier=0.7)
-                
-                # 피를 한 번 빨면 배부르므로 추격을 멈춤
-                self.stop_hunt()
-                return True
-        return False
-
-    def make_child(self):
-        """번식: 스태미나 소모가 매우 적고 성공 확률이 높음"""
-        breed_cost = 5.0  # 번식 비용이 거의 없음
-        if self.stamina < breed_cost or (self.couple and self.couple.stamina < breed_cost):
-            return None
-            
-        self.use_stamina(breed_cost)
-        if self.couple:
-            self.couple.use_stamina(breed_cost)
-            
-        print(f"🦟🥚 [{self.name}]이(가) 대량의 모기 알을 낳았습니다!")
-        return Egg(self.coordinate, self, hatch_time=self.HATCH_TIME)
-
-    def _spawn_child(self):
-        child_sex = random.choice(["male", "female"])
-        child = type(self)(name=f"Mosquito_{random.randint(1000, 9999)}", coordinate=self.coordinate[:], sex=child_sex)
-        
-        # 기본 부모 능력치에서 유전 변이 폭을 조금 넓게 줌
-        child.max_hp = int(self.max_hp * random.uniform(0.8, 1.2))
-        child.hp = child.max_hp
-        child.max_stamina = self.max_stamina * random.uniform(0.9, 1.1)
-        child.max_speed = self.max_speed * random.uniform(0.9, 1.2)
-        child.flying_speed = self.flying_speed * random.uniform(0.9, 1.2)
-        
-        return child
-
-    def update(self, dt: float, game_map, weather, animals: List[Animal]):
-        super().update(dt, game_map, weather, animals)
-        
-        if not self.alive or self.is_stunned:
-            return
-            
-        # 사냥 중이 아닐 때 모기 특유의 잦은 궤도 변경 (윙윙거림)
-        if not getattr(self, 'is_hunting', False) and not getattr(self, 'is_fleeing', False):
-            if not getattr(self, 'target_coord', None) or random.random() < 0.05:
-                # 짧은 반경 안에서 목표지점을 자주 갱신
-                rx = self.coordinate[0] + random.uniform(-150.0, 150.0)
-                ry = self.coordinate[1] + random.uniform(-150.0, 150.0)
-                # 맵 바깥으로 나가지 않도록 조정
-                rx = max(0.0, min(float(game_map.pixel_width), rx))
-                ry = max(0.0, min(float(game_map.pixel_height), ry))
-                self.target_coord = [rx, ry]
-                
-            if getattr(self, 'target_coord', None):
-                self.move(dt, target=self.target_coord, speed_multiplier=0.6)
-                if self.distance_to(self.target_coord) < 10.0:
-                    self.target_coord = None
+                # 물속이 아니고, 스태미나가 여유로우며, 점프 중이 아닐 때 확률적 점프 발동
+                if (self.environment_status != "water" and 
+                    self.stamina >= 40.0 and 
+                    getattr(self, 'jump_boost_timer', 0) <= 0 and 
+                    random.random() < 0.02):
+                    self.use_stamina(10.0) # 점프 시작 시 1회 소모
+                    self.jump_boost_timer = 0.8 # 0.8초 동안 가속

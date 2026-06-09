@@ -3,9 +3,48 @@ import random
 import pygame
 from typing import Tuple, Optional, List
 
-from animal import Animal, Predator, Prey, Egg, TILE_SIZE
+from animal import Animal, Predator, Prey, Egg
+from map_system import TileType, TILE_SIZE
 
-Bae = {}
+Bae={}
+
+
+# ════════════════════════════════════════════════
+#  물 관련 모듈 레벨 유틸 (Crocodile 등에서 공용 사용)
+# ════════════════════════════════════════════════
+
+_WATER_TILES = (TileType.WATER, TileType.DEEP_WATER)
+
+
+def _is_water(game_map, tx: int, ty: int) -> bool:
+    """타일 좌표 (tx, ty)가 물 타일인지 확인."""
+    return game_map.get_tile(tx, ty) in _WATER_TILES
+
+
+def _find_shore_positions(game_map, cx: float, cy: float,
+                          search_radius_tiles: int = 20,
+                          max_candidates: int = 12):
+    """
+    (cx, cy) 픽셀 위치 주변에서 '물가'(물 타일이면서 옆이 육지인 경계)
+    위치들을 거리순으로 정렬해 픽셀 좌표 리스트로 반환.
+    """
+    origin_tx = int(cx // TILE_SIZE)
+    origin_ty = int(cy // TILE_SIZE)
+    candidates = []
+    for dy in range(-search_radius_tiles, search_radius_tiles + 1):
+        for dx in range(-search_radius_tiles, search_radius_tiles + 1):
+            tx, ty = origin_tx + dx, origin_ty + dy
+            if not _is_water(game_map, tx, ty):
+                continue
+            # 상하좌우 중 하나라도 물이 아니면 물가
+            if any(not _is_water(game_map, tx + ndx, ty + ndy)
+                   for ndx, ndy in ((1, 0), (-1, 0), (0, 1), (0, -1))):
+                px = (tx + 0.5) * TILE_SIZE
+                py = (ty + 0.5) * TILE_SIZE
+                dist = math.hypot(px - cx, py - cy)
+                candidates.append((dist, px, py))
+    candidates.sort()
+    return [(px, py) for _, px, py in candidates[:max_candidates]]
 
 
 # ════════════════════════════════════════════════
@@ -17,7 +56,7 @@ class Anaconda(Predator):
     아나콘다 클래스.
 
     행동 흐름:
-      [물속] idle(자유이동) → waiting(발견·정지) → rushing(기습)
+      [물속] idle(배회) → waiting(발견·정지) → rushing(기습)
           기습 성공 → choke + eat
           기습 실패 → chasing(추격)
       [육지] 최대속도·가속도·스태미나 감소 패널티
@@ -31,6 +70,10 @@ class Anaconda(Predator):
     _STATE_WAITING = "waiting"
     _STATE_RUSHING = "rushing"
     _STATE_CHASING = "chasing"
+
+    HUNT_TARGETS     = {"Capybara", "Monkey", "Parrot", "ToxicFrog"}
+    HATCH_TIME       = 90.0    # 아나콘다 알 부화 시간 (초)
+    WATER_PREY_RANGE = 160.0   # 피식자 주변 이 거리 이내에 물이 있어야 타겟으로 삼음
 
     def __init__(
         self,
@@ -59,6 +102,28 @@ class Anaconda(Predator):
             max_accelerate=water_max_accelerate,
             **kwargs,
         )
+
+        # ── 아나콘다 전용 속성 ──
+        self.choke_range: float = choke_range
+        self.hidden: bool = False
+
+        # 물속/육지 스탯
+        self.water_max_speed      = water_max_speed
+        self.water_max_accelerate = water_max_accelerate
+        self.land_max_speed       = land_max_speed
+        self.land_max_accelerate  = land_max_accelerate
+        self.land_stamina_drain   = land_stamina_drain
+
+        # 매복 상태
+        self._state: str = self._STATE_IDLE
+        self._ambush_timer: float = 0.0
+        self._ambush_wait_time: float = ambush_wait_time
+        self._ambush_rush_speed: float = 2.5
+        self._target: Optional[Animal] = None
+
+        # 배회
+        self._wander_target: Optional[Tuple[float, float]] = None
+        self._wander_timer: float = 0.0
 
         # 💡 1. 여기서 아나콘다 전용 이미지를 설정
         self.image_path = "anaconda.png"  # 아나콘다 이미지 파일명
@@ -89,25 +154,6 @@ class Anaconda(Predator):
         # 새로운 가로, 세로 크기로 스케일링
         self.image = pygame.transform.scale(orig_img, (new_w, new_h))
 
-
-        # ── 아나콘다 전용 속성 ──
-        self.choke_range: float = choke_range
-        self.hidden: bool = False
-
-        # 물속/육지 스탯
-        self.water_max_speed     = water_max_speed
-        self.water_max_accelerate = water_max_accelerate
-        self.land_max_speed      = land_max_speed
-        self.land_max_accelerate = land_max_accelerate
-        self.land_stamina_drain  = land_stamina_drain
-
-        # 매복 상태
-        self._state: str = self._STATE_IDLE
-        self._ambush_timer: float = 0.0
-        self._ambush_wait_time: float = ambush_wait_time
-        self._ambush_rush_speed: float = 2.5
-        self._target: Optional[Animal] = None
-
     # ── 은신 ────────────────────────────────────
 
     def hide(self):
@@ -128,10 +174,6 @@ class Anaconda(Predator):
             target.take_damage(choke_dps * dt, source=f"{self.name}_choke")
             target.apply_stun(stun_duration)
 
-    HUNT_TARGETS    = {"Capybara", "Monkey", "Parrot", "ToxicFrog"}
-    HATCH_TIME      = 90.0   # 아나콘다 알 부화 시간 (초)
-    WATER_PREY_RANGE = 160.0  # 피식자 주변 이 거리 이내에 물이 있어야 타겟으로 삼음
-
     # ── 물 관련 유틸 ─────────────────────────────
 
     def _is_water_tile(self, wx: float, wy: float, game_map) -> bool:
@@ -140,65 +182,77 @@ class Anaconda(Predator):
         return game_map.is_water(tx, ty)
 
     def _prey_near_water(self, prey: Animal, game_map) -> bool:
-        """
-        피식자 주변 WATER_PREY_RANGE 이내에 물 타일이 있는지 확인.
-        반지름을 TILE_SIZE 간격으로 샘플링.
-        """
+        """피식자 주변 WATER_PREY_RANGE 이내에 물 타일이 있는지 확인."""
         px, py = prey.coordinate
-        r = self.WATER_PREY_RANGE
         step = TILE_SIZE
-        steps = int(r / step)
+        steps = int(self.WATER_PREY_RANGE / step)
         for dx in range(-steps, steps + 1):
             for dy in range(-steps, steps + 1):
-                wx = px + dx * step
-                wy = py + dy * step
-                if self._is_water_tile(wx, wy, game_map):
+                if self._is_water_tile(px + dx * step, py + dy * step, game_map):
                     return True
         return False
 
     def _nearest_water_point_to(self, target_coord: Tuple[float, float],
-                                 game_map) -> Optional[Tuple[float, float]]:
+                                game_map) -> Optional[Tuple[float, float]]:
         """
-        자신의 현재 위치에서 탐색 가능한 물 타일 중
-        target_coord에 가장 가까운 타일의 중심 좌표 반환.
-        hunt_range 내 물 타일만 탐색.
+        자신의 hunt_range 내 물 타일 중 target_coord에 가장 가까운
+        타일의 중심 좌표 반환. 없으면 None.
         """
         ox, oy = self.coordinate
         tx, ty = target_coord
-        search_r = self.hunt_range
         step = TILE_SIZE
-        steps = int(search_r / step)
+        steps = int(self.hunt_range / step)
 
         best_point = None
         best_dist  = float('inf')
-
         for dx in range(-steps, steps + 1):
             for dy in range(-steps, steps + 1):
                 wx = ox + dx * step
                 wy = oy + dy * step
                 if not self._is_water_tile(wx, wy, game_map):
                     continue
-                dist_to_target = math.hypot(wx - tx, wy - ty)
-                if dist_to_target < best_dist:
-                    best_dist  = dist_to_target
+                d = math.hypot(wx - tx, wy - ty)
+                if d < best_dist:
+                    best_dist  = d
                     best_point = (wx + TILE_SIZE / 2, wy + TILE_SIZE / 2)
-
         return best_point
+
+    # ── 배회 ────────────────────────────────────
+
+    # Bae.py - Anaconda 클래스의 _wander 메서드 교체
+    def _wander(self, dt: float, game_map):
+        self._wander_timer -= dt
+        if (self._wander_target is None or 
+            self._wander_timer <= 0 or 
+            self.distance_to(self._wander_target) < TILE_SIZE):
+            
+            rx = self.coordinate[0] + random.uniform(-300, 300)
+            ry = self.coordinate[1] + random.uniform(-300, 300)
+            
+            # 맵 경계선 처리
+            rx = max(50.0, min(float(game_map.pixel_width - 50.0), rx))
+            ry = max(50.0, min(float(game_map.pixel_height - 50.0), ry))
+            
+            water_target = self._nearest_water_point_to((rx, ry), game_map)
+            # 물 타일이 근처에 없으면 그냥 제한된 랜덤 좌표로 이동
+            self._wander_target = water_target if water_target else (rx, ry)
+            self._wander_timer  = random.uniform(3.0, 6.0)
+            
+        if self._wander_target:
+            # 스태미나 여유가 있으면 물속에서 살짝 더 빠르게 배회
+            speed_mul = 0.6 if self.environment_status == 'water' and self.stamina > 40 else 0.4
+            self.move(dt, self._wander_target, speed_multiplier=speed_mul)
+        else:
+            self.move(dt)
 
     # ── 기습 성공 확률 계산 ──────────────────────
 
     def _calc_ambush_success_rate(self, target: Animal) -> float:
-        """
-        기습 성공 확률.
-        아나콘다가 배고플수록, 피식자의 HP/스태미나가 낮을수록 성공률 상승.
-        """
+        """아나콘다가 배고플수록, 피식자의 HP/스태미나가 낮을수록 성공률 상승."""
         base = 0.55
-        # 아나콘다 배고픔 보너스 (hunger 100 → +0.20)
-        hunger_bonus = (self.hunger / 100.0) * 0.20
-        # 피식자 상태 보너스
-        prey_hp_bonus      = (1.0 - target.hp / target.max_hp) * 0.10
-        prey_stamina_bonus = (1.0 - target.stamina / target.max_stamina) * 0.10
-        # 아나콘다 자신의 스태미나가 낮으면 성공률 감소
+        hunger_bonus         = (self.hunger / 100.0) * 0.20
+        prey_hp_bonus        = (1.0 - target.hp / target.max_hp) * 0.10
+        prey_stamina_bonus   = (1.0 - target.stamina / target.max_stamina) * 0.10
         self_stamina_penalty = (1.0 - self.stamina / self.max_stamina) * 0.15
         rate = base + hunger_bonus + prey_hp_bonus + prey_stamina_bonus - self_stamina_penalty
         return max(0.05, min(0.95, rate))
@@ -229,19 +283,17 @@ class Anaconda(Predator):
         self._state = state
         self._ambush_timer = 0.0
         self._target = target
-        if state != self._STATE_WAITING:
-            pass  # waiting 외엔 정지 안 함
 
     # ── 행동 FSM ────────────────────────────────
 
     def _update_behavior(self, dt: float, animals: List[Animal], game_map):
         state = self._state
 
-        # ── idle: 물속 이동, 물가 피식자 탐색 ──
+        # ── idle: 물속 배회, 물가 피식자 탐색 ──
         if state == self._STATE_IDLE:
             self.hide()
             if self.hunger < self.hunger_limit:
-                self.move(dt)   # 배부르면 자유 이동
+                self._wander(dt, game_map)   # 배부르면 자유 배회
                 return
 
             # 물 근처에 있는 피식자만 타겟
@@ -253,7 +305,7 @@ class Anaconda(Predator):
                 and self._prey_near_water(a, game_map)
             ]
             if not prey_list:
-                self.move(dt)
+                self._wander(dt, game_map)
                 return
 
             closest = min(prey_list, key=lambda a: self.distance_to(a))
@@ -261,11 +313,9 @@ class Anaconda(Predator):
             # 물속에서 피식자에게 최대한 접근 (물 타일 중 피식자와 가장 가까운 점)
             approach = self._nearest_water_point_to(closest.coordinate, game_map)
             if approach and self.distance_to(approach) > self.attack_range:
-                # 아직 물속 접근 중
-                self.move(dt, approach)
+                self.move(dt, approach)          # 아직 물속 접근 중
             else:
-                # 충분히 접근됨 → 정지 후 기습 대기
-                self._set_state(self._STATE_WAITING, closest)
+                self._set_state(self._STATE_WAITING, closest)  # 충분히 접근 → 기습 대기
                 self.stop()
 
         # ── waiting: 정지 후 기습 카운트다운 ──
@@ -295,8 +345,7 @@ class Anaconda(Predator):
             self.move(dt, t.coordinate, self._ambush_rush_speed)
 
             if self.distance_to(t) <= self.attack_range:
-                success_rate = self._calc_ambush_success_rate(t)
-                if random.random() < success_rate:
+                if random.random() < self._calc_ambush_success_rate(t):
                     # 기습 성공 → choke + 처치
                     self.choke(t, dt)
                     self.attack(t, base_damage=30.0)
@@ -334,8 +383,7 @@ class Anaconda(Predator):
                         self._set_state(self._STATE_IDLE)
 
             # 너무 멀어지거나 스태미나 소진 시 포기
-            if (self.distance_to(t) > self.hunt_range * 1.5
-                    or self.stamina <= 0):
+            if self.distance_to(t) > self.hunt_range * 1.5 or self.stamina <= 0:
                 self._set_state(self._STATE_IDLE)
 
     # ── 업데이트 ─────────────────────────────────
@@ -349,42 +397,15 @@ class Anaconda(Predator):
         self._apply_land_stamina_drain(dt)
 
         # 물속일 때만 매복 FSM 작동
-        # 육지에서는 Predator 기본 사냥 + 은신 해제
+        # 육지에서는 은신 해제, 추격 중이면 계속 추격
         if self.environment_status == "water":
             self.stop_hunt()   # Predator 기본 사냥 비활성화
             self._update_behavior(dt, animals, game_map)
         else:
             if self.hidden:
                 self.stop_hide()
-            # 육지 추격 중이면 계속 추격
             if self._state == self._STATE_CHASING:
                 self._update_behavior(dt, animals, game_map)
-        
-        if not getattr(self, 'is_hunting', False) and not getattr(self, 'is_fleeing', False):
-            # 1. 목표가 없을 때 일정 확률(약 2%)로 새 목표 지점 설정
-            if not getattr(self, '_roam_target', None):
-                if random.random() < 0.02: 
-                    # 현재 위치를 기준으로 반경 200 픽셀 내의 랜덤 좌표 생성
-                    rx = self.coordinate[0] + random.uniform(-200.0, 200.0)
-                    ry = self.coordinate[1] + random.uniform(-200.0, 200.0)
-                    
-                    # 맵 바깥으로 벗어나지 않도록 좌표 보정
-                    if game_map:
-                        rx = max(0.0, min(float(game_map.pixel_width), rx))
-                        ry = max(0.0, min(float(game_map.pixel_height), ry))
-                    
-                    self._roam_target = [rx, ry]
-            
-            # 2. 목표가 설정되어 있다면 해당 위치로 이동 (평소엔 0.5배속으로 천천히)
-            if getattr(self, '_roam_target', None):
-                self.move(dt, target=self._roam_target, speed_multiplier=0.5)
-                
-                # 3. 목적지에 거의 도달했으면 목표 초기화 (도착 후 대기 상태로 전환)
-                if self.distance_to(self._roam_target) < 15.0:
-                    self._roam_target = None
-        else:
-            # 바쁠 때는 배회 타겟을 초기화하여 꼬임 방지
-            self._roam_target = None
 
     # ── 번식 ────────────────────────────────────
 
@@ -406,6 +427,15 @@ class Anaconda(Predator):
 
     def draw(self, screen: pygame.Surface, camera):
         if not self.alive:
+            return
+        
+        # 1. 화면 좌표를 먼저 계산합니다.
+        sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
+        
+        # 💡 [최적화 핵심] 동물이 화면을 완전히 벗어났다면 아예 연산(스케일, 회전)을 하지 않고 종료합니다.
+        # 여유 공간(margin)을 약 100픽셀 정도 두어 자연스럽게 사라지도록 합니다.
+        margin = 100
+        if not (-margin < sx < camera.screen_w + margin and -margin < sy < camera.screen_h + margin):
             return
 
         if self.image:
@@ -440,106 +470,23 @@ class Anaconda(Predator):
         else:
             # 이미지 로드 실패 시 기본 원으로 그리기(부모 클래스)
             super().draw(screen, camera)
-
     def __repr__(self):
-        return (f"<Anaconda '{self.name}' hp={self.hp}/{self.max_hp} ")
-                
-
-def _is_water(game_map, tx, ty):
-    t = game_map.get_tile(tx, ty)
-    return t in _WATER_TILES
-
-def _find_shore_positions(game_map, cx, cy, search_radius_tiles=20, max_candidates=12):
-    origin_tx = int(cx // TILE_SIZE)
-    origin_ty = int(cy // TILE_SIZE)
-    candidates = []
-    for dy in range(-search_radius_tiles, search_radius_tiles + 1):
-        for dx in range(-search_radius_tiles, search_radius_tiles + 1):
-            tx, ty = origin_tx + dx, origin_ty + dy
-            if not _is_water(game_map, tx, ty):
-                continue
-            if any(not _is_water(game_map, tx + ndx, ty + ndy)
-                   for ndx, ndy in ((1,0),(-1,0),(0,1),(0,-1))):
-                px = (tx + 0.5) * TILE_SIZE
-                py = (ty + 0.5) * TILE_SIZE
-                dist = math.hypot(px - cx, py - cy)
-                candidates.append((dist, px, py))
-    candidates.sort()
-    return [(px, py) for _, px, py in candidates[:max_candidates]]
+        return (f"<Anaconda '{self.name}' hp={self.hp}/{self.max_hp} "
+                f"state={self._state} hidden={self.hidden} "
+                f"hunger={self.hunger:.0f} "
+                f"pos=({self.coordinate[0]:.0f},{self.coordinate[1]:.0f})>")
 
 
-import random
-import math
-import pygame
-from typing import Tuple, Optional, List
-
-from animal import Animal, Predator, Prey
-from map_system import TileType, TILE_SIZE
-
-_WATER_TILES = (TileType.WATER, TileType.DEEP_WATER)
-
-def _is_water(game_map, tx, ty):
-    t = game_map.get_tile(tx, ty)
-    return t in _WATER_TILES
-
-def _find_shore_positions(game_map, cx, cy, search_radius_tiles=20, max_candidates=12):
-    origin_tx = int(cx // TILE_SIZE)
-    origin_ty = int(cy // TILE_SIZE)
-    candidates = []
-    for dy in range(-search_radius_tiles, search_radius_tiles + 1):
-        for dx in range(-search_radius_tiles, search_radius_tiles + 1):
-            tx, ty = origin_tx + dx, origin_ty + dy
-            if not _is_water(game_map, tx, ty):
-                continue
-            if any(not _is_water(game_map, tx + ndx, ty + ndy)
-                   for ndx, ndy in ((1,0),(-1,0),(0,1),(0,-1))):
-                px = (tx + 0.5) * TILE_SIZE
-                py = (ty + 0.5) * TILE_SIZE
-                dist = math.hypot(px - cx, py - cy)
-                candidates.append((dist, px, py))
-    candidates.sort()
-    return [(px, py) for _, px, py in candidates[:max_candidates]]
-
-
-import random
-import math
-import pygame
-from typing import Tuple, Optional, List
-
-from animal import Animal, Predator, Prey, Egg
-from map_system import TileType, TILE_SIZE
-
-_WATER_TILES = (TileType.WATER, TileType.DEEP_WATER)
-
-def _is_water(game_map, tx, ty):
-    t = game_map.get_tile(tx, ty)
-    return t in _WATER_TILES
-
-def _find_shore_positions(game_map, cx, cy, search_radius_tiles=20, max_candidates=12):
-    origin_tx = int(cx // TILE_SIZE)
-    origin_ty = int(cy // TILE_SIZE)
-    candidates = []
-    for dy in range(-search_radius_tiles, search_radius_tiles + 1):
-        for dx in range(-search_radius_tiles, search_radius_tiles + 1):
-            tx, ty = origin_tx + dx, origin_ty + dy
-            if not _is_water(game_map, tx, ty):
-                continue
-            if any(not _is_water(game_map, tx + ndx, ty + ndy)
-                   for ndx, ndy in ((1,0),(-1,0),(0,1),(0,-1))):
-                px = (tx + 0.5) * TILE_SIZE
-                py = (ty + 0.5) * TILE_SIZE
-                dist = math.hypot(px - cx, py - cy)
-                candidates.append((dist, px, py))
-    candidates.sort()
-    return [(px, py) for _, px, py in candidates[:max_candidates]]
-
+# ════════════════════════════════════════════════
+#  Crocodile
+# ════════════════════════════════════════════════
 
 class Crocodile(Predator):
     """
     악어.
-    idle(유영) -> seeking_shore(물가 이동) -> lurking(잠복) -> rushing(기습)
-      -> death_roll(데스롤) -> idle
-      -> chasing(추격) -> idle
+    idle(배회) → seeking_shore(물가 이동) → lurking(잠복) → rushing(기습)
+      → death_roll(데스롤) → idle
+      → chasing(추격) → idle
     """
     SPECIES_VISION_RANGE = 230.0
     SPECIES_VISION_ANGLE = 110.0
@@ -570,6 +517,26 @@ class Crocodile(Predator):
             environment_status="water",
             **kwargs,
         )
+        self.water_max_speed     = water_max_speed
+        self.water_max_accel     = water_max_accel
+        self.rush_max_speed      = rush_max_speed
+        self.rush_max_accel      = rush_max_accel
+        self.land_stamina_drain  = land_stamina_drain
+        self.drink_range         = drink_range
+        self.lurk_timeout        = lurk_timeout
+        self.death_roll_dps      = death_roll_dps
+        self.death_roll_duration = death_roll_duration
+
+        self.submerged   = False
+        self._state      = self._IDLE
+        self._target     = None
+        self._shore_pos  = None
+        self._lurk_timer = 0.0
+        self._roll_timer = 0.0
+
+        # 배회
+        self._wander_target = None
+        self._wander_timer  = 0.0
 
         # 💡 1. 여기서 악어 전용 이미지를 설정
         self.image_path = "crocodile.png"  # 악어 이미지 파일명
@@ -600,22 +567,7 @@ class Crocodile(Predator):
         # 새로운 가로, 세로 크기로 스케일링
         self.image = pygame.transform.scale(orig_img, (new_w, new_h))
 
-        self.water_max_speed    = water_max_speed
-        self.water_max_accel    = water_max_accel
-        self.rush_max_speed     = rush_max_speed
-        self.rush_max_accel     = rush_max_accel
-        self.land_stamina_drain = land_stamina_drain
-        self.drink_range        = drink_range
-        self.lurk_timeout       = lurk_timeout
-        self.death_roll_dps     = death_roll_dps
-        self.death_roll_duration = death_roll_duration
-
-        self.submerged  = False
-        self._state     = self._IDLE
-        self._target    = None
-        self._shore_pos = None
-        self._lurk_timer = 0.0
-        self._roll_timer = 0.0
+    # ── 상태 전환 ───────────────────────────────
 
     def _set_state(self, state, target=None):
         self._state      = state
@@ -630,6 +582,8 @@ class Crocodile(Predator):
         else:
             self.max_speed      = self.water_max_speed
             self.max_accelerate = self.water_max_accel
+
+    # ── 헬퍼 ────────────────────────────────────
 
     def _pick_shore(self, game_map):
         shores = _find_shore_positions(game_map, self.coordinate[0], self.coordinate[1])
@@ -656,12 +610,51 @@ class Crocodile(Predator):
             if math.hypot(*self.velocity) > 5.0:
                 self.stamina = max(0.0, self.stamina - self.land_stamina_drain * dt)
 
+    # ── 배회 ────────────────────────────────────
+
+    # Bae.py - Crocodile 클래스의 _wander 메서드 교체
+    def _wander(self, dt, game_map):
+        self._wander_timer -= dt
+        if (self._wander_target is None or 
+            self._wander_timer <= 0 or 
+            self.distance_to(self._wander_target) < TILE_SIZE):
+            
+            cx = int(self.coordinate[0] // TILE_SIZE)
+            cy = int(self.coordinate[1] // TILE_SIZE)
+            self._wander_target = None
+            
+            # 물과 육지 모두 돌아다닐 수 있도록 타일 탐색
+            for _ in range(20):
+                tx = cx + random.randint(-10, 10)
+                ty = cy + random.randint(-10, 10)
+                if 0 <= tx < game_map.map_width and 0 <= ty < game_map.map_height:
+                    self._wander_target = (tx * TILE_SIZE + TILE_SIZE / 2,
+                                           ty * TILE_SIZE + TILE_SIZE / 2)
+                    break
+                    
+            if not self._wander_target:
+                # 타일을 못 찾았을 경우 안전 좌표 부여
+                rx = max(50.0, min(float(game_map.pixel_width - 50.0), self.coordinate[0] + random.uniform(-100, 100)))
+                ry = max(50.0, min(float(game_map.pixel_height - 50.0), self.coordinate[1] + random.uniform(-100, 100)))
+                self._wander_target = (rx, ry)
+                
+            self._wander_timer = random.uniform(3.0, 6.0)
+            
+        if self._wander_target:
+            # 악어도 스태미나가 충분하면 조금 더 빠르게 수영
+            speed_mul = 0.6 if self.environment_status == 'water' and self.stamina > 50 else 0.4
+            self.move(dt, self._wander_target, speed_multiplier=speed_mul)
+        else:
+            self.move(dt)
+
+    # ── 행동 FSM ────────────────────────────────
+
     def _update_behavior(self, dt, animals, game_map):
         s = self._state
 
         if s == self._IDLE:
             self.submerged = False
-            self.move(dt)
+            self._wander(dt, game_map)
             if self.hunger >= self.hunger_limit:
                 shore = self._pick_shore(game_map)
                 if shore:
@@ -743,6 +736,8 @@ class Crocodile(Predator):
             if self.distance_to(t) > self.hunt_range or self.stamina <= 0:
                 self._set_state(self._IDLE)
 
+    # ── 업데이트 ─────────────────────────────────
+
     def update(self, dt, game_map, weather, animals):
         super().update(dt, game_map, weather, animals)
         if not self.alive:
@@ -756,36 +751,11 @@ class Crocodile(Predator):
 
         self.stop_hunt()
         self._apply_land_drain(dt)
-        if (self.environment_status != "water"
-                and self._state == self._LURKING):
+        if self.environment_status != "water" and self._state == self._LURKING:
             self._set_state(self._IDLE)
         self._update_behavior(dt, animals, game_map)
 
-        if not getattr(self, 'is_hunting', False) and not getattr(self, 'is_fleeing', False):
-            # 1. 목표가 없을 때 일정 확률(약 2%)로 새 목표 지점 설정
-            if not getattr(self, '_roam_target', None):
-                if random.random() < 0.02: 
-                    # 현재 위치를 기준으로 반경 200 픽셀 내의 랜덤 좌표 생성
-                    rx = self.coordinate[0] + random.uniform(-200.0, 200.0)
-                    ry = self.coordinate[1] + random.uniform(-200.0, 200.0)
-                    
-                    # 맵 바깥으로 벗어나지 않도록 좌표 보정
-                    if game_map:
-                        rx = max(0.0, min(float(game_map.pixel_width), rx))
-                        ry = max(0.0, min(float(game_map.pixel_height), ry))
-                    
-                    self._roam_target = [rx, ry]
-            
-            # 2. 목표가 설정되어 있다면 해당 위치로 이동 (평소엔 0.5배속으로 천천히)
-            if getattr(self, '_roam_target', None):
-                self.move(dt, target=self._roam_target, speed_multiplier=0.5)
-                
-                # 3. 목적지에 거의 도달했으면 목표 초기화 (도착 후 대기 상태로 전환)
-                if self.distance_to(self._roam_target) < 15.0:
-                    self._roam_target = None
-        else:
-            # 바쁠 때는 배회 타겟을 초기화하여 꼬임 방지
-            self._roam_target = None
+    # ── 번식 ────────────────────────────────────
 
     def make_child(self):
         return Egg(
@@ -800,8 +770,19 @@ class Crocodile(Predator):
             coordinate=tuple(self.coordinate),
         )
 
+    # ── 렌더링 ──────────────────────────────────
+
     def draw(self, screen: pygame.Surface, camera):
         if not self.alive:
+            return
+        
+        # 1. 화면 좌표를 먼저 계산합니다.
+        sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
+        
+        # 💡 [최적화 핵심] 동물이 화면을 완전히 벗어났다면 아예 연산(스케일, 회전)을 하지 않고 종료합니다.
+        # 여유 공간(margin)을 약 100픽셀 정도 두어 자연스럽게 사라지도록 합니다.
+        margin = 100
+        if not (-margin < sx < camera.screen_w + margin and -margin < sy < camera.screen_h + margin):
             return
 
         if self.image:
@@ -836,9 +817,3 @@ class Crocodile(Predator):
         else:
             # 이미지 로드 실패 시 기본 원으로 그리기(부모 클래스)
             super().draw(screen, camera)
-
-    def __repr__(self):
-        return (f"<Crocodile '{self.name}' hp={self.hp}/{self.max_hp} "
-                f"state={self._state} submerged={self.submerged} "
-                f"hunger={self.hunger:.0f} "
-                f"pos=({self.coordinate[0]:.0f},{self.coordinate[1]:.0f})>")
