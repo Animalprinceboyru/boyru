@@ -35,6 +35,7 @@ def main():
     physics = PhysicsEngine()
 
     animals = []
+    eggs = []
     show_fov = False
     
     #내가 추가
@@ -58,9 +59,45 @@ def main():
         animals.append(Anaconda(name=f"아나콘다_{i+1}", coordinate=(px, py)))
     # 전기뱀장어는 물 타일 근처에 스폰하는 것이 자연스럽습니다.
     animals.append(ElectricEel(name="전기뱀장어A", coordinate=(1000.0, 1000.0)))
+    animals.append(ElectricEel(name="전기뱀장어B", coordinate=(1080.0,1000.0),sex='female'))
     animals.append(Capybara(name="카피바라A", coordinate=(1100.0, 1100.0)))
     animals.append(Monkey(name="원숭이A", coordinate=(1200.0, 1200.0)))
     animals.append(Parrot(name="앵무새A", coordinate=(1300.0, 1300.0)))
+
+    animals.append(Rhino(name="대장코뿔소", coordinate=(400.0, 500.0), age=600, sex="male"))
+    animals.append(ToxicFrog(name="화살독개구리", coordinate=(350.0, 450.0), age=600, sex="female"))
+
+    # ... (중략) ...
+
+    # 아나콘다 암수 교대로 생성
+    for i in range(11):
+        if not water_tiles:
+            break
+        tx, ty = random.choice(water_tiles)
+        px = tx * TILE_SIZE + TILE_SIZE / 2
+        py = ty * TILE_SIZE + TILE_SIZE / 2
+        anaconda_sex = "male" if i % 2 == 0 else "female"
+        animals.append(Anaconda(name=f"아나콘다_{i+1}", coordinate=(px, py), age=600, sex=anaconda_sex))
+        
+    animals.append(ElectricEel(name="전기뱀장어A", coordinate=(1000.0, 1000.0), age=600, sex="male"))
+    animals.append(ElectricEel(name="전기뱀장어B", coordinate=(1080.0, 1000.0), age=600, sex='female'))
+    
+    # 홀로 외롭던 피식자들의 동반자 스폰 및 나이 설정
+    animals.append(Capybara(name="카피바라A", coordinate=(1100.0, 1100.0), age=600, sex="male"))
+    animals.append(Capybara(name="카피바라B", coordinate=(1150.0, 1100.0), age=600, sex="female"))
+    
+    animals.append(Monkey(name="원숭이A", coordinate=(1200.0, 1200.0), age=600, sex="male"))
+    animals.append(Monkey(name="원숭이B", coordinate=(1250.0, 1200.0), age=600, sex="female"))
+    
+    animals.append(Parrot(name="앵무새A", coordinate=(1300.0, 1300.0), age=600, sex="male"))
+    animals.append(Parrot(name="앵무새B", coordinate=(1350.0, 1300.0), age=600, sex="female"))
+
+    # 독개구리들도 암수 분배
+    for i in range(5):
+        rx = random.uniform(500.0, 1500.0)
+        ry = random.uniform(500.0, 1500.0)
+        frog_sex = "male" if i % 2 == 0 else "female"
+        animals.append(ToxicFrog(name=f"독개구리_{i+1}", coordinate=(rx, ry), age=600, sex=frog_sex))
 
     # 2. 반복문을 이용해 여러 마리를 랜덤 위치에 대량 스폰하기
     for i in range(5):
@@ -143,6 +180,21 @@ def main():
             if hasattr(animal, 'update'):
                 # 기존의 dt 대신 배속이 곱해진 game_dt를 넘겨줌!
                 animal.update(game_dt, game_map, weather, animals)
+            # ✨ [추가] 동물이 품고 있는 새 생명이 있다면 꺼내옵니다.
+            if getattr(animal, 'pending_child', None) is not None:
+                child = animal.pending_child
+                if type(child).__name__ == "Egg":
+                    eggs.append(child)  # 알이면 부화기에 넣기
+                else:
+                    animals.append(child) # 코뿔소 같은 태생이면 바로 필드에 추가
+                animal.pending_child = None
+        
+        # ✨ [추가] 2. 알 부화 관리
+        for egg in eggs[:]:
+            hatched_animal = egg.update(game_dt)
+            if hatched_animal:  # 알이 부화했다면!
+                animals.append(hatched_animal)
+                eggs.remove(egg)
 
         for animal in animals:
             if hasattr(animal, 'update'):
@@ -161,6 +213,10 @@ def main():
         screen.fill((15, 30, 15))
         game_map.draw(screen, camera.x, camera.y,
                       SCREEN_WIDTH, SCREEN_HEIGHT, camera.zoom)
+        
+        # ✨ [추가] 필드에 놓인 알 그리기
+        for egg in eggs:
+            egg.draw(screen, camera)
 
         for animal in animals:
             if hasattr(animal, 'draw'):
