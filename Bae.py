@@ -126,6 +126,7 @@ class Anaconda(Predator):
         # 배회
         self._wander_target: Optional[Tuple[float, float]] = None
         self._wander_timer: float = 0.0
+        self._is_behind_tree = False # 💡 나무 뒤 숨김 효과 플래그
 
         # 💡 1. 여기서 아나콘다 전용 이미지를 설정
         self.image_path = "anaconda.png"  # 아나콘다 이미지 파일명
@@ -400,6 +401,10 @@ class Anaconda(Predator):
         Animal.update(self, dt, game_map, weather, animals)
         if not self.alive:
             return
+            
+        # 💡 [핵심 구현] 나무 뒤 X-ray 효과를 위한 충돌 판정
+        tree = game_map.get_tree_at_pixel(self.coordinate[0], self.coordinate[1])
+        self._is_behind_tree = (tree is not None and self.coordinate[1] < tree.coordinate[1])
 
         self._apply_environment_stats(game_map)
         self._apply_land_stamina_drain(dt)
@@ -464,6 +469,12 @@ class Anaconda(Predator):
             scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
             scaled_image = pygame.transform.flip(scaled_image, True, False) # 뱀장어는 이미지 바라보는 방향이 반대라 좌우 반전
             scaled_image = pygame.transform.rotate(scaled_image, 20) # 뱀장어는 살짝 기울어져 있음
+            
+            # 💡 [핵심 구현] 나무 뒤 투시(X-ray) 효과 적용
+            if getattr(self, '_is_behind_tree', False):
+                scaled_image.set_alpha(100) # 반투명 처리
+            else:
+                scaled_image.set_alpha(255)
 
             # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
             angle_deg = math.degrees(-self.facing_angle)
@@ -483,6 +494,7 @@ class Anaconda(Predator):
         else:
             # 이미지 로드 실패 시 기본 원으로 그리기(부모 클래스)
             super().draw(screen, camera)
+            
     def __repr__(self):
         return (f"<Anaconda '{self.name}' hp={self.hp}/{self.max_hp} "
                 f"state={self._state} hidden={self.hidden} "
@@ -550,6 +562,7 @@ class Crocodile(Predator):
         # 배회
         self._wander_target = None
         self._wander_timer  = 0.0
+        self._is_behind_tree = False # 💡 나무 뒤 숨김 효과 플래그
 
         # 💡 1. 여기서 악어 전용 이미지를 설정
         self.image_path = "crocodile.png"  # 악어 이미지 파일명
@@ -760,6 +773,10 @@ class Crocodile(Predator):
         if not self.alive:
             return
 
+        # 💡 [핵심 구현] 나무 뒤 X-ray 효과를 위한 충돌 판정
+        tree = game_map.get_tree_at_pixel(self.coordinate[0], self.coordinate[1])
+        self._is_behind_tree = (tree is not None and self.coordinate[1] < tree.coordinate[1])
+
         # 커플 맺기 시도
         if self.couple is None:
             for a in animals:
@@ -814,6 +831,12 @@ class Crocodile(Predator):
             scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
             scaled_image = pygame.transform.flip(scaled_image, True, False) # 뱀장어는 이미지 바라보는 방향이 반대라 좌우 반전
             scaled_image = pygame.transform.rotate(scaled_image, 20) # 뱀장어는 살짝 기울어져 있음
+            
+            # 💡 [핵심 구현] 나무 뒤 투시(X-ray) 효과 적용
+            if getattr(self, '_is_behind_tree', False):
+                scaled_image.set_alpha(100) # 반투명 처리
+            else:
+                scaled_image.set_alpha(255)
 
             # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
             angle_deg = math.degrees(-self.facing_angle)

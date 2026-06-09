@@ -131,6 +131,7 @@ class FlyingAnimal(Animal):
             
         if not self.is_flying and self.stamina > 20:
             self.is_flying = True
+
 # ==========================================
 # 2. 코뿔소 (Rhino)
 # ==========================================
@@ -143,7 +144,7 @@ class Rhino(Animal):
         self.crash_power = crash_power
         self.max_speed = 90.0
         self.size=random.uniform(100,200)
-        
+        self._is_behind_tree = False # 💡 나무 뒤 숨김 효과 플래그
         
         # 돌진 상태 관리를 위한 변수
         self.is_charging = False
@@ -207,6 +208,12 @@ class Rhino(Animal):
             # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
             scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
             scaled_image = pygame.transform.flip(scaled_image, True, False) # 코뿔소는 이미지 바라보는 방향이 반대라 좌우 반전
+            
+            # 💡 [핵심 구현] 나무 뒤 투시(X-ray) 효과 적용
+            if getattr(self, '_is_behind_tree', False):
+                scaled_image.set_alpha(100) # 반투명 처리
+            else:
+                scaled_image.set_alpha(255)
 
             # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
             angle_deg = math.degrees(-self.facing_angle)
@@ -287,6 +294,10 @@ class Rhino(Animal):
         if not self.alive or self.is_stunned:
             return
 
+        # 💡 [핵심 구현] 나무 뒤 X-ray 효과를 위한 충돌 판정
+        tree = game_map.get_tree_at_pixel(self.coordinate[0], self.coordinate[1])
+        self._is_behind_tree = (tree is not None and self.coordinate[1] < tree.coordinate[1])
+
         # ── 돌진 상태 업데이트 ──
         if self.is_charging and self.charge_target_coord:
             # 1. 목표 지점(연장선 끝)을 향해 2.5배속 이동
@@ -358,6 +369,8 @@ class ElectricEel(Predator):
         self.electric_power = electric_power
         self.max_speed = 70.0
         self.size=random.uniform(80,140)
+        self._is_behind_tree = False # 💡 나무 뒤 숨김 효과 플래그
+        
         # 💡 1. 여기서 뱀장어 전용 이미지를 설정
         self.image_path = "eel.png"  # 뱀장어 이미지 파일명
         self.image = None
@@ -416,6 +429,12 @@ class ElectricEel(Predator):
             scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
             scaled_image = pygame.transform.flip(scaled_image, True, False) # 뱀장어는 이미지 바라보는 방향이 반대라 좌우 반전
             scaled_image = pygame.transform.rotate(scaled_image, 20) # 뱀장어는 살짝 기울어져 있음
+
+            # 💡 [핵심 구현] 나무 뒤 투시(X-ray) 효과 적용
+            if getattr(self, '_is_behind_tree', False):
+                scaled_image.set_alpha(100) # 반투명 처리
+            else:
+                scaled_image.set_alpha(255)
 
             # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
             angle_deg = math.degrees(-self.facing_angle)
@@ -583,6 +602,11 @@ class ElectricEel(Predator):
 
         if not self.alive or self.is_stunned:
             return
+            
+        # 💡 [핵심 구현] 나무 뒤 X-ray 효과를 위한 충돌 판정
+        tree = game_map.get_tree_at_pixel(self.coordinate[0], self.coordinate[1])
+        self._is_behind_tree = (tree is not None and self.coordinate[1] < tree.coordinate[1])
+
         self.check_competition(animals)
         # 사냥(Hunting) 중 타겟에 접근 시 일정 확률로 전기 공격
         if self.is_hunting and self.hunting_target:
@@ -654,6 +678,7 @@ class ToxicFrog(Animal):
         self.poison_amount = poison_amount
         self.max_speed = 45.0
         self.size = random.uniform(30,60)
+        self._is_behind_tree = False # 💡 나무 뒤 숨김 효과 플래그
 
         # 💡 1. 여기서 독개구리 전용 이미지를 설정
         self.image_path = "frog.png"  # 독개구리 이미지 파일명
@@ -711,6 +736,12 @@ class ToxicFrog(Animal):
                 
             # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
             scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
+
+            # 💡 [핵심 구현] 나무 뒤 투시(X-ray) 효과 적용
+            if getattr(self, '_is_behind_tree', False):
+                scaled_image.set_alpha(100) # 반투명 처리
+            else:
+                scaled_image.set_alpha(255)
 
             # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
             angle_deg = math.degrees(-self.facing_angle)
@@ -783,6 +814,10 @@ class ToxicFrog(Animal):
         
         if not self.alive or self.is_stunned:
             return
+            
+        # 💡 [핵심 구현] 나무 뒤 X-ray 효과를 위한 충돌 판정
+        tree = game_map.get_tree_at_pixel(self.coordinate[0], self.coordinate[1])
+        self._is_behind_tree = (tree is not None and self.coordinate[1] < tree.coordinate[1])
         
         if self.hunger>30.0:
             for a in animals:
