@@ -266,6 +266,9 @@ class Animal:
     def draw_fov_debug(self, screen: pygame.Surface, camera,
                        color=(80, 80, 0), alpha: int = 40):
         """시야 부채꼴 디버그 렌더링. system.py에서 원하는 키에 연결해서 사용."""
+        if not self.alive:
+            return
+        
         sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
         r = int(self.vision_range * camera.zoom)
         surf = pygame.Surface((r * 2 + 2, r * 2 + 2), pygame.SRCALPHA)
