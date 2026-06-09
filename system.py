@@ -6,7 +6,7 @@ from camera import Camera
 from weather import WeatherSystem
 from gui import HUD
 from physics import PhysicsEngine
-
+from Lee_animals import Parrot, Capybara, Monkey #내가 추가
 from Choi_animals import Rhino, ElectricEel, ToxicFrog #내가 추가
 from Bae import Anaconda
 
@@ -58,6 +58,9 @@ def main():
         animals.append(Anaconda(name=f"아나콘다_{i+1}", coordinate=(px, py)))
     # 전기뱀장어는 물 타일 근처에 스폰하는 것이 자연스럽습니다.
     animals.append(ElectricEel(name="전기뱀장어A", coordinate=(1000.0, 1000.0)))
+    animals.append(Capybara(name="카피바라A", coordinate=(1100.0, 1100.0)))
+    animals.append(Monkey(name="원숭이A", coordinate=(1200.0, 1200.0)))
+    animals.append(Parrot(name="앵무새A", coordinate=(1300.0, 1300.0)))
 
     # 2. 반복문을 이용해 여러 마리를 랜덤 위치에 대량 스폰하기
     for i in range(5):

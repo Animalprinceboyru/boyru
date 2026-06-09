@@ -137,6 +137,7 @@ class FlyingAnimal(Animal):
 class Rhino(Animal):
     SPECIES_VISION_RANGE: float = 100.0
     SPECIES_VISION_ANGLE: float = 100.0
+    minimap_color = (150, 150, 150)
     def __init__(self, name: str, coordinate: Tuple[float, float], crash_power: float = 50.0, **kwargs):
         super().__init__(name, coordinate, **kwargs)
         self.crash_power = crash_power
@@ -347,6 +348,7 @@ class Rhino(Animal):
 class ElectricEel(Predator):
     SPECIES_VISION_RANGE: float = 130.0
     SPECIES_VISION_ANGLE: float = 130.0
+    minimap_color = (0, 255, 255)
     HUNT_TARGETS={"Capybara","Monkey"}
     def __init__(self, name: str, coordinate: Tuple[float, float], electric_power: float = 30.0, **kwargs):
         super().__init__(name, coordinate, **kwargs)
@@ -639,6 +641,7 @@ class ElectricEel(Predator):
 class ToxicFrog(Animal):
     SPECIES_VISION_RANGE: float = 130.0
     SPECIES_VISION_ANGLE: float = 140.0
+    inimap_color = (144, 238, 144)
     HATCH_TIME: float = 60.0
     def __init__(self, name: str, coordinate: Tuple[float, float], poison_amount: float = 4.0, **kwargs):
         super().__init__(name, coordinate, **kwargs)

@@ -64,6 +64,7 @@ class Anaconda(Predator):
 
     SPECIES_VISION_RANGE: float = 200.0
     SPECIES_VISION_ANGLE: float = 130.0
+    minimap_color = (255, 255, 0)
 
     # 행동 상태 상수
     _STATE_IDLE    = "idle"
@@ -492,7 +493,7 @@ class Crocodile(Predator):
     SPECIES_VISION_ANGLE = 110.0
     HUNT_TARGETS = {"Capybara", "Monkey", "Parrot", "ToxicFrog"}
     HATCH_TIME   = 120.0
-    minimap_color = (0, 200, 200)
+    minimap_color = (0, 128, 128)
 
     _IDLE          = "idle"
     _SEEKING_SHORE = "seeking_shore"

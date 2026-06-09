@@ -18,7 +18,7 @@ class Mosquito(FlyingAnimal):
     SPECIES_VISION_RANGE = 180.0
     SPECIES_VISION_ANGLE = 360.0
     HATCH_TIME = 40.0
-    minimap_color = (150, 150, 150)
+    minimap_color = (255, 255, 255)
 
     def __init__(self, name: str, coordinate: Tuple[float, float], **kwargs):
         super().__init__(name, coordinate, flying_speed=150.0, **kwargs)
