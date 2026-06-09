@@ -193,10 +193,10 @@ class Animal:
         # 둥지
         self.home_coordinate = list(home_coordinate) if home_coordinate else None
         self.at_home = False
-        self.home_threshold = 40.0
-        self.home_build_prob = 0.002
-        self.breed_prob = 0.001
-        self.home_range = 80.0
+        self.home_threshold = 120.0
+        self.home_build_prob = 0.8
+        self.breed_prob = 0.9
+        self.home_range = 150.0
         self._home_timer = 0.0
 
         # 상태 이상
@@ -425,6 +425,9 @@ class Animal:
             dist = self.distance_to(self.couple)
             if dist > self.COUPLE_RANGE * 1.5:
                 self.move(dt=0.1, target=self.couple.coordinate, speed_multiplier=1.2)
+                # ✨ [핵심 수정] 집이 없을 때는 집을 짓기 위해 서로 바짝 다가가게 만듭니다!
+                # 집이 이미 있다면 기존처럼 멀어졌을 때만 다가가고, 집이 없다면 home_threshold 안쪽까지 적극 접근합니다.
+                target_distance = self.COUPLE_RANGE * 1.5 if self.home_coordinate else self.home_threshold * 0.5
                 return self.couple.coordinate
         return None
 
@@ -455,6 +458,8 @@ class Animal:
             if random.random() < self.breed_prob:
                 result = self.make_child()
                 if result:
+                    # ✨ [핵심 수정] 리턴만 하고 버려지는 대신, 동물 객체 내부에 저장합니다!
+                    self.pending_child = result
                     print(f"{self.name} 번식 성공!")
                 return result
 
@@ -599,6 +604,12 @@ class Animal:
         self.at_home = self.is_at_home()
         self._update_home(dt)
         self._update_home_buff(dt)
+        # ✨ [추가] 모든 동물이 매 프레임 솔로라면 주변 동물을 탐색해 커플 맺기를 시도합니다.
+        if self.couple is None:
+            for a in animals:
+                if self.try_form_couple(a):
+                    print(f"💖 {self.name}({self.sex}) ❤️ {a.name}({a.sex}) 커플 성사!")
+                    break
 
     # ── 렌더링 ──────────────────────────────────
 

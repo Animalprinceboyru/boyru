@@ -39,13 +39,13 @@ class FlyingAnimal(Animal):
         if self.is_flying:
             if source == "electric_shock" or (attacker and attacker.__class__.__name__ == "ElectricEel"):
                 # 날든 말든 대미지 수치 자체는 가중치 없이 동일하게 받음
-                super().take_damage(amount, source, attacker)
+                super().take_damage(amount, source)
             else:
                 # 전기뱀장어의 공격이 아니면 공중 회피(무시)
                 return
         else:
             # 지상에 있을 때는 모든 데미지를 정상적으로 받음
-            super().take_damage(amount, source, attacker)
+            super().take_damage(amount, source)
     def attack(self, target: Optional[Animal] = None, base_damage: float = 15.0):
         """날면서 다른 대상을 공격할 때, 나의 비행 속도에 비례하여 타겟에게 더 큰 피해를 입힙니다."""
         if target and target.alive:
@@ -264,7 +264,7 @@ class Rhino(Animal):
             print(f"🦏 🔥 [{self.name}]가 치명상을 입고 격노하여 {attacker.name}이(가) 있던 위치로 맹렬히 돌진합니다!!")
 
     def take_damage(self, amount: float, source: str = "unknown", attacker: Optional[Animal] = None):
-        super().take_damage(amount, source, attacker)
+        super().take_damage(amount, source)
         
         # 체력이 35% 이하로 떨어지고 복수할 공격자가 존재할 때 격노 발동
         if self.alive and self.hp <= self.max_hp * 0.35 and attacker and attacker.alive:
@@ -511,7 +511,7 @@ class ElectricEel(Predator):
     def take_damage(self, amount: float, source: str = "unknown", attacker: Optional[Animal] = None):
         """피격 시 공격자에게 전기를 방출하여 반격"""
         # 부모 클래스의 원래 데미지 받는 처리 먼저 실행
-        super().take_damage(amount, source, attacker)
+        super().take_damage(amount, source)
         
         # 공격자가 있고, 내가 아직 살아있으며, 스태미나가 충분하다면 반격!
         if attacker and attacker.alive and self.alive and self.use_stamina(10.0):
