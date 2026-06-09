@@ -776,8 +776,8 @@ class ToxicFrog(Animal):
 
     def jump(self, dt: float, target: Optional[Tuple[float, float]] = None):
         """도약 이동: 스태미나를 소모해 순간적으로 거리를 벌립니다."""
-        if self.use_stamina(10.0):
-            self.move(dt, target, speed_multiplier=2.5) # 짧은 순간 속도 폭발
+        # 💡 프레임마다 스태미나를 10씩 증발시키던 버그를 제거하고 이동만 시킵니다.
+        self.move(dt, target, speed_multiplier=2.5)
 
     def poison(self, attacker: Animal):
         """자신을 공격한 포식자나 모기에게 독 효과를 부여합니다."""
@@ -821,6 +821,7 @@ class ToxicFrog(Animal):
 
                     #도약해서 먹을 수 있을 때
                     elif dist <= 120.0 and self.stamina >= 10.0:
+                        self.use_stamina(10.0 * dt) # 💡 사냥 중일 때는 초당 10씩 소모하도록 보정
                         self.jump(dt, target=a.coordinate)
                         break
         if not getattr(self, 'is_hunting', False) and not getattr(self, 'is_fleeing', False):
@@ -838,6 +839,19 @@ class ToxicFrog(Animal):
                             self.target_coord = [closest_apple.x, closest_apple.y]
                             self.move(dt, self.target_coord, speed_multiplier=0.8)
                         return
+            
+            # 💧 [추가] 갈증 해소 로직 (살기 위해 물가로 이동)
+            if self.is_seeking_water and getattr(self, '_water_target', None):
+                self.move(dt, self._water_target)
+                self.target_coord = None # 물을 찾을 때는 랜덤 배회 타겟 초기화
+                return
+                
+            # 💕 [추가] 짝꿍 따라가기
+            couple_tgt = self.couple_follow()
+            if couple_tgt:
+                self.move(dt, couple_tgt)
+                self.target_coord = None
+                return
                 
             if not getattr(self, 'target_coord', None):
                 if random.random() < 0.05: 

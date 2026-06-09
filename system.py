@@ -191,38 +191,39 @@ def main():
         # ── 업데이트 ──
         keys = pygame.key.get_pressed()
         
-        # 카메라는 현실 시간에 맞춰 부드럽게 이동해야 하므로 원래 dt 사용
+        # 카메라는 현실 시간에 맞춰 부드럽게 이동
         camera.update(dt, keys)
-        # 날씨 시스템은 내부적으로 시계에 배속을 계산하고 있으므로 원래 dt 사용
+        # 날씨 시스템은 자체적으로 배속 계산
         weather.update(dt)
 
-        # 💡 [핵심 수정] 동물들에게 적용될 '게임 내 시간(game_dt)'을 계산
+        # 💡 [핵심] 동물들과 맵에 적용될 '게임 내 시간(game_dt)' 계산
         game_dt = dt * weather.time_speed
 
+        # 🍎 맵 업데이트 (사과 생성)
+        game_map.update(game_dt)
+
+        # 🐾 동물 메인 업데이트 (중복 삭제 후 딱 한 번만 실행!)
         for animal in animals:
             if hasattr(animal, 'update'):
-                # 기존의 dt 대신 배속이 곱해진 game_dt를 넘겨줌!
                 animal.update(game_dt, game_map, weather, animals)
-            # ✨ [추가] 동물이 품고 있는 새 생명이 있다면 꺼내옵니다.
+            
+            # ✨ 동물이 품고 있는 새 생명(알/새끼) 꺼내기
             if getattr(animal, 'pending_child', None) is not None:
                 child = animal.pending_child
                 if type(child).__name__ == "Egg":
                     eggs.append(child)  # 알이면 부화기에 넣기
                 else:
-                    animals.append(child) # 코뿔소 같은 태생이면 바로 필드에 추가
+                    animals.append(child) # 태생이면 바로 필드에 추가
                 animal.pending_child = None
         
-        # ✨ [추가] 2. 알 부화 관리
+        # 🥚 알 부화 관리
         for egg in eggs[:]:
             hatched_animal = egg.update(game_dt)
-            if hatched_animal:  # 알이 부화했다면!
+            if hatched_animal:  # 부화 성공 시
                 animals.append(hatched_animal)
                 eggs.remove(egg)
 
-        for animal in animals:
-            if hasattr(animal, 'update'):
-                animal.update(dt, game_map, weather, animals)
-
+        # 물리 엔진 및 경계선 처리
         if animals:
             physics.apply_separation(animals)
             for animal in animals:

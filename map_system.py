@@ -25,11 +25,58 @@ TILE_COLORS = {
 TILE_SIZE = 32
 
 # 🍎 사과 클래스 추가
-@dataclass
+# 🍎 [추가] 맵 전용 이미지 캐시 딕셔너리
+MAP_IMAGE_CACHE = {}
+
 class Apple:
-    x: float
-    y: float
-    heal_amount: float = 30.0
+    def __init__(self, x: float, y: float, heal_amount: float = 30.0):
+        self.x = x
+        self.y = y
+        self.heal_amount = heal_amount
+        self.size = 15.0  # 사과 기본 크기
+
+        # 💡 다른 동물들처럼 최초 1회만 이미지를 캐시에 로드합니다.
+        self.image_path = "apple.png"
+        self.image = None
+
+        if self.image_path not in MAP_IMAGE_CACHE:
+            try:
+                loaded_img = pygame.image.load(self.image_path).convert_alpha()
+                MAP_IMAGE_CACHE[self.image_path] = loaded_img
+            except Exception as e:
+                print(f"⚠️ 사과 이미지 로드 실패: {e}")
+                MAP_IMAGE_CACHE[self.image_path] = None
+                
+        orig_img = MAP_IMAGE_CACHE[self.image_path]
+        if orig_img is not None:
+            orig_w, orig_h = orig_img.get_size()
+            target_max_size = int(self.size * 2.5)
+            scale_factor = target_max_size / max(orig_w, orig_h)
+            new_w = int(orig_w * scale_factor)
+            new_h = int(orig_h * scale_factor)
+            self.image = pygame.transform.scale(orig_img, (new_w, new_h))
+
+    # 💡 다른 동물들처럼 자체 렌더링(draw) 함수를 가집니다.
+    def draw(self, screen: pygame.Surface, camera_x: float, camera_y: float, zoom: float, screen_w: int, screen_h: int):
+        sx = (self.x - camera_x) * zoom
+        sy = (self.y - camera_y) * zoom
+        
+        # 최적화: 화면 밖이면 렌더링 안 함
+        margin = 50
+        if not (-margin < sx < screen_w + margin and -margin < sy < screen_h + margin):
+            return
+
+        if self.image:
+            # 줌 비율에 맞춰 매 프레임 스케일링 (동물들과 완벽히 동일한 방식)
+            new_w = int(self.image.get_width() * zoom)
+            new_h = int(self.image.get_height() * zoom)
+            scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
+            rect = scaled_image.get_rect(center=(int(sx), int(sy)))
+            screen.blit(scaled_image, rect)
+        else:
+            # 이미지 로드 실패 시 폴백 (빨간 원)
+            pygame.draw.circle(screen, (220, 40, 40), (int(sx), int(sy)), max(1, int(5 * zoom)))
+            pygame.draw.circle(screen, (40, 200, 40), (int(sx - 2*zoom), int(sy - 3*zoom)), max(1, int(2 * zoom)))
 
 @dataclass
 class Tree:
@@ -92,22 +139,32 @@ class GameMap:
         
         self.apples: List[Apple] = [] # 🍎 맵에 사과 리스트 추가
 
-        # 🍎 사과 이미지 로드 및 캐시 초기화 추가
-        try:
-            self.base_apple_img = pygame.image.load("apple.png").convert_alpha()
-            # 원본 이미지가 너무 크다면 기본 크기(예: 15x15 픽셀)로 미리 줄여둡니다.
-            self.base_apple_img = pygame.transform.scale(self.base_apple_img, (45, 45))
-        except Exception as e:
-            print(f"⚠️ 사과 이미지 로드 실패: {e}")
-            self.base_apple_img = None
-        
-        # 줌 레벨별 스케일링된 이미지를 저장할 딕셔너리
-        self.apple_img_cache = {}
-
         self.surface      = None
         self.needs_redraw = True
 
+        # 🍎 [추가] 사과 리스폰을 위한 타이머와 최대 개수 설정 (동물 생존을 위해 80개로 넉넉하게 설정)
+        self.apple_spawn_timer = 0.0
+        self.MAX_APPLES = 80 
+
         self._generate_map()
+    
+    # 🍎 [추가] 맵 업데이트 (주기적으로 사과 생성)
+    def update(self, dt: float):
+        self.apple_spawn_timer += dt
+        # 0.5초(게임 시간 기준)마다 사과 생성 시도
+        if self.apple_spawn_timer >= 0.5:
+            self.apple_spawn_timer = 0.0
+            # 현재 사과 개수가 최대치보다 적을 때만 생성
+            if len(self.apples) < self.MAX_APPLES:
+                # 무한 루프 방지를 위해 최대 5번만 빈자리(육지)를 찾습니다.
+                for _ in range(5):
+                    tx = random.randint(2, self.map_width - 3)
+                    ty = random.randint(2, self.map_height - 3)
+                    if self.tiles[ty][tx] not in (TileType.DEEP_WATER, TileType.WATER):
+                        px = tx * TILE_SIZE + random.randint(4, TILE_SIZE - 4)
+                        py = ty * TILE_SIZE + random.randint(4, TILE_SIZE - 4)
+                        self.apples.append(Apple(x=px, y=py))
+                        break
 
     # ══════════════════════════════════════════
     # 노이즈
@@ -472,38 +529,8 @@ class GameMap:
             screen.blit(self.surface, (0, 0), src)
 
         # 🍎 렌더링 마지막 부분: 화면 위의 사과들을 그려줍니다!
-        if self.apples:
-            # 부동소수점 오차 방지를 위해 줌 레벨을 소수점 둘째 자리까지 반올림하여 캐시 키로 사용
-            zoom_key = round(zoom, 2)
-            current_apple_img = None
-            
-            # 1. 이미지가 성공적으로 로드된 경우에만 캐싱 및 스케일링 진행
-            if self.base_apple_img:
-                if zoom_key not in self.apple_img_cache:
-                    # 줌 비율에 맞춰 사과 이미지 크기 조절 후 캐시에 저장
-                    orig_w, orig_h = self.base_apple_img.get_size()
-                    new_w = max(1, int(orig_w * zoom))
-                    new_h = max(1, int(orig_h * zoom))
-                    self.apple_img_cache[zoom_key] = pygame.transform.scale(self.base_apple_img, (new_w, new_h))
-                
-                # 캐시에서 현재 줌 레벨에 맞는 이미지 꺼내기
-                current_apple_img = self.apple_img_cache[zoom_key]
-
-            # 2. 사과 화면 출력
-            for apple in self.apples:
-                sx = (apple.x - camera_x) * zoom
-                sy = (apple.y - camera_y) * zoom
-                
-                # 컬링(Culling): 화면에 보이는 사과만 그리기
-                if -20 <= sx <= screen_w + 20 and -20 <= sy <= screen_h + 20:
-                    if current_apple_img:
-                        # 이미지의 중심점(center)이 (sx, sy)에 오도록 위치 조정 후 blit
-                        rect = current_apple_img.get_rect(center=(int(sx), int(sy)))
-                        screen.blit(current_apple_img, rect)
-                    else:
-                        # 이미지 로드 실패 시 기존의 기본 원형 그리기 (폴백)
-                        pygame.draw.circle(screen, (220, 40, 40), (int(sx), int(sy)), max(1, int(5 * zoom)))
-                        pygame.draw.circle(screen, (40, 200, 40), (int(sx - 2*zoom), int(sy - 3*zoom)), max(1, int(2 * zoom)))
+        for apple in self.apples:
+            apple.draw(screen, camera_x, camera_y, zoom, screen_w, screen_h)
     # ══════════════════════════════════════════
     # 유틸리티
     # ══════════════════════════════════════════
