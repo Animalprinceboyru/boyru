@@ -824,6 +824,21 @@ class ToxicFrog(Animal):
                         self.jump(dt, target=a.coordinate)
                         break
         if not getattr(self, 'is_hunting', False) and not getattr(self, 'is_fleeing', False):
+            if not getattr(self, 'is_hunting', False) and not getattr(self, 'is_fleeing', False):
+                # 🍎 [추가] 사과 탐색 및 섭취 로직
+                if self.hunger > 30.0 and game_map.apples:
+                    closest_apple = min(game_map.apples, key=lambda a: self.distance_to((a.x, a.y)), default=None)
+                    if closest_apple and self.distance_to((closest_apple.x, closest_apple.y)) < self.vision_range:
+                        if self.distance_to((closest_apple.x, closest_apple.y)) < 25.0:
+                            print(f"🍎 [{self.name}]가 긴 혀로 사과를 날름 삼켰습니다!")
+                            self.eat(closest_apple.heal_amount)
+                            game_map.apples.remove(closest_apple)
+                            self.target_coord = None
+                        else:
+                            self.target_coord = [closest_apple.x, closest_apple.y]
+                            self.move(dt, self.target_coord, speed_multiplier=0.8)
+                        return
+                
             if not getattr(self, 'target_coord', None):
                 if random.random() < 0.05: 
                     rx = self.coordinate[0] + random.uniform(-150.0, 150.0)
