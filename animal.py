@@ -263,15 +263,23 @@ class Animal:
         if spd > 0.1:
             self.facing_angle = math.atan2(self.velocity[1], self.velocity[0])
 
+    # animal.py 파일 내 Animal 클래스의 draw_fov_debug 메서드를 아래와 같이 통째로 교체합니다.
     def draw_fov_debug(self, screen: pygame.Surface, camera,
-                       color=(80, 80, 0), alpha: int = 40):
+                       color=None, alpha: int = 70): # 💡 투명도(alpha)를 70으로 올려 조금 더 진하게 만듭니다.
         """시야 부채꼴 디버그 렌더링. system.py에서 원하는 키에 연결해서 사용."""
+        if not self.alive:
+            return
+
         sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
         r = int(self.vision_range * camera.zoom)
+        
+        # 💡 [핵심] 각 동물 클래스에 정의된 minimap_color를 가져오고, 없으면 흰색으로 처리합니다.
+        fov_color = getattr(self, 'minimap_color', (255, 255, 255))
+        
         surf = pygame.Surface((r * 2 + 2, r * 2 + 2), pygame.SRCALPHA)
         c = (r + 1, r + 1)
         if self.vision_angle >= 360:
-            pygame.draw.circle(surf, (*color, alpha), c, r)
+            pygame.draw.circle(surf, (*fov_color, alpha), c, r)
         else:
             half = math.radians(self.vision_angle / 2)
             start = math.degrees(self.facing_angle - half)
@@ -280,7 +288,7 @@ class Animal:
             for i in range(21):
                 a = math.radians(start + (end - start) * i / 20)
                 pts.append((c[0] + math.cos(a) * r, c[1] + math.sin(a) * r))
-            pygame.draw.polygon(surf, (*color, alpha), pts)
+            pygame.draw.polygon(surf, (*fov_color, alpha), pts)
         screen.blit(surf, (int(sx) - r - 1, int(sy) - r - 1))
 
     # ── 이동 ────────────────────────────────────

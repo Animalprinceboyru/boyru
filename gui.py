@@ -223,6 +223,7 @@ class HUD:
             ("F1 : 맵 재생성",         False),
             ("F2 : 날씨 변경",         False),
             ("F3 : 선택 나무 파괴",    False),
+            ("F4 : 시야각 표시",       False),
         ]
         lh = 20
         pw = 250

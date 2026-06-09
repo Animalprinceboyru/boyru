@@ -53,20 +53,23 @@ class Capybara(Prey):
                 # 💡 [핵심] 실패하더라도 딕셔너리에 None을 넣어줘야함
                 Lee[self.image_path] = None
         orig_img = Lee[self.image_path]
-        orig_w, orig_h = orig_img.get_size() # 원본 이미지의 가로, 세로 픽셀
-            
-        # 동물의 크기(size)를 기준으로 최대 렌더링 크기 설정
-        target_max_size = int(self.size * 2.5)
-            
-        # 가로와 세로 중 더 긴 쪽을 기준으로 축소/확대 비율(scale_factor)을 계산
-        scale_factor = target_max_size / max(orig_w, orig_h)
-            
-        # 구한 비율을 가로, 세로에 똑같이 곱해주어 비율 유지
-        new_w = int(orig_w * scale_factor)
-        new_h = int(orig_h * scale_factor)
-            
-        # 새로운 가로, 세로 크기로 스케일링
-        self.image = pygame.transform.scale(orig_img, (new_w, new_h))
+        if orig_img is not None:
+            orig_w, orig_h = orig_img.get_size() # 원본 이미지의 가로, 세로 픽셀
+                
+            # 동물의 크기(size)를 기준으로 최대 렌더링 크기 설정
+            target_max_size = int(self.size * 2.5)
+                
+            # 가로와 세로 중 더 긴 쪽을 기준으로 축소/확대 비율(scale_factor)을 계산
+            scale_factor = target_max_size / max(orig_w, orig_h)
+                
+            # 구한 비율을 가로, 세로에 똑같이 곱해주어 비율 유지
+            new_w = int(orig_w * scale_factor)
+            new_h = int(orig_h * scale_factor)
+                
+            # 새로운 가로, 세로 크기로 스케일링
+            self.image = pygame.transform.scale(orig_img, (new_w, new_h))
+        else:
+            self.image = None # 이미지가 없으면 None으로 유지 (draw 메서드에서 부모의 원형 그리기로 대체됨)
 
     def draw(self, screen: pygame.Surface, camera):
         if not self.alive:
@@ -235,20 +238,23 @@ class Monkey(Prey):
                 # 💡 [핵심] 실패하더라도 딕셔너리에 None을 넣어줘야함
                 Lee[self.image_path] = None
         orig_img = Lee[self.image_path]
-        orig_w, orig_h = orig_img.get_size() # 원본 이미지의 가로, 세로 픽셀
-            
-        # 동물의 크기(size)를 기준으로 최대 렌더링 크기 설정
-        target_max_size = int(self.size * 2.5)
-            
-        # 가로와 세로 중 더 긴 쪽을 기준으로 축소/확대 비율(scale_factor)을 계산
-        scale_factor = target_max_size / max(orig_w, orig_h)
-            
-        # 구한 비율을 가로, 세로에 똑같이 곱해주어 비율 유지
-        new_w = int(orig_w * scale_factor)
-        new_h = int(orig_h * scale_factor)
-            
-        # 새로운 가로, 세로 크기로 스케일링
-        self.image = pygame.transform.scale(orig_img, (new_w, new_h))
+        if orig_img is not None:
+            orig_w, orig_h = orig_img.get_size() # 원본 이미지의 가로, 세로 픽셀
+                
+            # 동물의 크기(size)를 기준으로 최대 렌더링 크기 설정
+            target_max_size = int(self.size * 2.5)
+                
+            # 가로와 세로 중 더 긴 쪽을 기준으로 축소/확대 비율(scale_factor)을 계산
+            scale_factor = target_max_size / max(orig_w, orig_h)
+                
+            # 구한 비율을 가로, 세로에 똑같이 곱해주어 비율 유지
+            new_w = int(orig_w * scale_factor)
+            new_h = int(orig_h * scale_factor)
+                
+            # 새로운 가로, 세로 크기로 스케일링
+            self.image = pygame.transform.scale(orig_img, (new_w, new_h))
+        else:
+            self.image = None # 이미지가 없으면 None으로 유지 (draw 메서드에서 부모의 원형 그리기로 대체됨)
 
     def draw(self, screen: pygame.Surface, camera):
         if not self.alive:
@@ -445,20 +451,23 @@ class Parrot(FlyingAnimal, Prey):
                 # 💡 [핵심] 실패하더라도 딕셔너리에 None을 넣어줘야함
                 Lee[self.image_path] = None
         orig_img = Lee[self.image_path]
-        orig_w, orig_h = orig_img.get_size() # 원본 이미지의 가로, 세로 픽셀
-            
-        # 동물의 크기(size)를 기준으로 최대 렌더링 크기 설정
-        target_max_size = int(self.size * 2.5)
-            
-        # 가로와 세로 중 더 긴 쪽을 기준으로 축소/확대 비율(scale_factor)을 계산
-        scale_factor = target_max_size / max(orig_w, orig_h)
-            
-        # 구한 비율을 가로, 세로에 똑같이 곱해주어 비율 유지
-        new_w = int(orig_w * scale_factor)
-        new_h = int(orig_h * scale_factor)
-            
-        # 새로운 가로, 세로 크기로 스케일링
-        self.image = pygame.transform.scale(orig_img, (new_w, new_h))
+        if orig_img is not None:
+            orig_w, orig_h = orig_img.get_size() # 원본 이미지의 가로, 세로 픽셀
+                
+            # 동물의 크기(size)를 기준으로 최대 렌더링 크기 설정
+            target_max_size = int(self.size * 2.5)
+                
+            # 가로와 세로 중 더 긴 쪽을 기준으로 축소/확대 비율(scale_factor)을 계산
+            scale_factor = target_max_size / max(orig_w, orig_h)
+                
+            # 구한 비율을 가로, 세로에 똑같이 곱해주어 비율 유지
+            new_w = int(orig_w * scale_factor)
+            new_h = int(orig_h * scale_factor)
+                
+            # 새로운 가로, 세로 크기로 스케일링
+            self.image = pygame.transform.scale(orig_img, (new_w, new_h))
+        else:
+            self.image = None # 이미지가 없으면 None으로 유지 (draw 메서드에서 부모의 원형 그리기로 대체됨)
 
     def draw(self, screen: pygame.Surface, camera):
         if not self.alive:
