@@ -23,7 +23,7 @@ Lee = {}
 class Capybara(Prey):
     SPECIES_VISION_RANGE = 200.0
     SPECIES_VISION_ANGLE = 270.0
-    minimap_color = (139, 69, 19)  # 미니맵에 표시할 갈색
+    minimap_color = (210, 180, 140)  # 미니맵에 표시할 갈색
 
     def __init__(self, name: str, coordinate: Tuple[float, float], **kwargs):
         super().__init__(name, coordinate, danger_range=150.0, **kwargs)
@@ -207,7 +207,7 @@ class Capybara(Prey):
 class Monkey(Prey):
     SPECIES_VISION_RANGE = 250.0
     SPECIES_VISION_ANGLE = 200.0
-    minimap_color = (210, 105, 30)  # 초콜릿색
+    minimap_color = (139, 69, 19)  # 초콜릿색
 
     def __init__(self, name: str, coordinate: Tuple[float, float], **kwargs):
         super().__init__(name, coordinate, danger_range=200.0, **kwargs)
@@ -419,7 +419,7 @@ class Monkey(Prey):
 class Parrot(FlyingAnimal, Prey):
     SPECIES_VISION_RANGE = 400.0  
     SPECIES_VISION_ANGLE = 360.0
-    minimap_color = (255, 60, 60)  # 미니맵에 표시할 밝은 빨간색
+    minimap_color = (255, 50, 50)  # 미니맵에 표시할 밝은 빨간색
 
     def __init__(self, name: str, coordinate: Tuple[float, float], **kwargs):
         super().__init__(name, coordinate, danger_range=250.0, **kwargs)
