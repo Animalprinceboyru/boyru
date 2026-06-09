@@ -92,6 +92,18 @@ class GameMap:
         
         self.apples: List[Apple] = [] # 🍎 맵에 사과 리스트 추가
 
+        # 🍎 사과 이미지 로드 및 캐시 초기화 추가
+        try:
+            self.base_apple_img = pygame.image.load("apple.png").convert_alpha()
+            # 원본 이미지가 너무 크다면 기본 크기(예: 15x15 픽셀)로 미리 줄여둡니다.
+            self.base_apple_img = pygame.transform.scale(self.base_apple_img, (45, 45))
+        except Exception as e:
+            print(f"⚠️ 사과 이미지 로드 실패: {e}")
+            self.base_apple_img = None
+        
+        # 줌 레벨별 스케일링된 이미지를 저장할 딕셔너리
+        self.apple_img_cache = {}
+
         self.surface      = None
         self.needs_redraw = True
 
@@ -460,13 +472,38 @@ class GameMap:
             screen.blit(self.surface, (0, 0), src)
 
         # 🍎 렌더링 마지막 부분: 화면 위의 사과들을 그려줍니다!
-        for apple in self.apples:
-            sx = (apple.x - camera_x) * zoom
-            sy = (apple.y - camera_y) * zoom
-            if -20 <= sx <= screen_w + 20 and -20 <= sy <= screen_h + 20:
-                pygame.draw.circle(screen, (220, 40, 40), (int(sx), int(sy)), max(1, int(5 * zoom)))
-                pygame.draw.circle(screen, (40, 200, 40), (int(sx - 2*zoom), int(sy - 3*zoom)), max(1, int(2 * zoom)))
+        if self.apples:
+            # 부동소수점 오차 방지를 위해 줌 레벨을 소수점 둘째 자리까지 반올림하여 캐시 키로 사용
+            zoom_key = round(zoom, 2)
+            current_apple_img = None
+            
+            # 1. 이미지가 성공적으로 로드된 경우에만 캐싱 및 스케일링 진행
+            if self.base_apple_img:
+                if zoom_key not in self.apple_img_cache:
+                    # 줌 비율에 맞춰 사과 이미지 크기 조절 후 캐시에 저장
+                    orig_w, orig_h = self.base_apple_img.get_size()
+                    new_w = max(1, int(orig_w * zoom))
+                    new_h = max(1, int(orig_h * zoom))
+                    self.apple_img_cache[zoom_key] = pygame.transform.scale(self.base_apple_img, (new_w, new_h))
+                
+                # 캐시에서 현재 줌 레벨에 맞는 이미지 꺼내기
+                current_apple_img = self.apple_img_cache[zoom_key]
 
+            # 2. 사과 화면 출력
+            for apple in self.apples:
+                sx = (apple.x - camera_x) * zoom
+                sy = (apple.y - camera_y) * zoom
+                
+                # 컬링(Culling): 화면에 보이는 사과만 그리기
+                if -20 <= sx <= screen_w + 20 and -20 <= sy <= screen_h + 20:
+                    if current_apple_img:
+                        # 이미지의 중심점(center)이 (sx, sy)에 오도록 위치 조정 후 blit
+                        rect = current_apple_img.get_rect(center=(int(sx), int(sy)))
+                        screen.blit(current_apple_img, rect)
+                    else:
+                        # 이미지 로드 실패 시 기존의 기본 원형 그리기 (폴백)
+                        pygame.draw.circle(screen, (220, 40, 40), (int(sx), int(sy)), max(1, int(5 * zoom)))
+                        pygame.draw.circle(screen, (40, 200, 40), (int(sx - 2*zoom), int(sy - 3*zoom)), max(1, int(2 * zoom)))
     # ══════════════════════════════════════════
     # 유틸리티
     # ══════════════════════════════════════════
