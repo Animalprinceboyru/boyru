@@ -1,4 +1,5 @@
 import pygame
+import time # 로그 타이머를 위해 추가
 from typing import Optional, List, Any
 
 COLOR_BG        = (20, 25, 20, 200)
@@ -19,10 +20,12 @@ class HUD:
             self.font_title  = pygame.font.SysFont("malgungothic", 20, bold=True)
             self.font_normal = pygame.font.SysFont("malgungothic", 15)
             self.font_small  = pygame.font.SysFont("malgungothic", 12)
+            self.log_font    = pygame.font.SysFont("malgungothic", 15, bold=True) # 로그용 폰트
         except Exception:
             self.font_title  = pygame.font.SysFont(None, 24, bold=True)
             self.font_normal = pygame.font.SysFont(None, 18)
             self.font_small  = pygame.font.SysFont(None, 14)
+            self.log_font    = pygame.font.SysFont(None, 18, bold=True)
 
         self.top_panel  = pygame.Surface((screen_w, 55), pygame.SRCALPHA)
         self.info_panel = pygame.Surface((340, 310), pygame.SRCALPHA)
@@ -30,6 +33,21 @@ class HUD:
 
         self.selected_animal: Optional[Any] = None
         self.selected_tree:   Optional[Any] = None
+        
+        # 실시간 전투/이벤트 로그를 저장할 리스트
+        self.logs = [] 
+
+    # ══════════════════════════════════════════
+    # 시스템 메시지 수신부
+    # ══════════════════════════════════════════
+    def add_log(self, text: str):
+        clean_text = text.strip()
+        if clean_text:
+            # (출력할 텍스트, 생성된 시간) 저장
+            self.logs.append((clean_text, time.time()))
+            # 화면에 너무 많은 줄이 생기지 않도록 최대 8줄 유지
+            if len(self.logs) > 8:
+                self.logs.pop(0)
 
     # ══════════════════════════════════════════
     # 메인 렌더링
@@ -38,64 +56,49 @@ class HUD:
         self._draw_top_bar(screen, weather_system, camera)
         self._draw_minimap(screen, camera, game_map, animals)
         self._draw_controls(screen, weather_system)
+        
+        # 실시간 로그 렌더링 추가
+        self._draw_logs(screen)
 
-        # 💡 좌측 상단에 개체 수 통계를 그리고, 패널이 차지한 높이를 반환받음
-        pop_panel_height = self._draw_population_stats(screen, animals)
-
-        # 💡 클릭해서 보는 상태창이 통계창과 겹치지 않도록 동적 배치 (기본 y좌표 65 + 통계창 높이 + 여백 10)
-        offset_y = 65 + pop_panel_height + 10
         if self.selected_animal is not None:
-            self._draw_animal_panel(screen, offset_y)
+            self._draw_animal_panel(screen)
         elif self.selected_tree is not None:
-            self._draw_tree_panel(screen, offset_y)
+            self._draw_tree_panel(screen)
 
     # ══════════════════════════════════════════
-    # 개체 수 통계 패널 (신규 추가)
+    # 화면 로그 렌더링
     # ══════════════════════════════════════════
-    def _draw_population_stats(self, screen, animals) -> int:
-        counts = {}
-        for a in animals:
-            if getattr(a, 'alive', False):
-                species = type(a).__name__
-                counts[species] = counts.get(species, 0) + 1
-                
-        if not counts:
-            return 0
-            
-        start_x = 16
-        start_y = 65
+    def _draw_logs(self, screen):
+        current_time = time.time()
+        # 생성된 지 7초가 지난 로그는 자동으로 리스트에서 삭제
+        self.logs = [(txt, t) for txt, t in self.logs if current_time - t < 7.0]
+
+        if not self.logs:
+            return
+
+        # 로그를 표시할 위치 (조작법 패널 우측 빈 공간)
+        start_x = 290
+        base_y = self.screen_h - 40
         
-        # 패널 세로 길이 동적 계산
-        panel_w = 200
-        panel_h = len(counts) * 22 + 35
-        bg = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-        bg.fill(COLOR_BG)
-        screen.blit(bg, (start_x, start_y))
-        
-        title = self.font_title.render("생태계 개체 수", True, COLOR_HIGHLIGHT)
-        screen.blit(title, (start_x + 12, start_y + 8))
-        
-        y_offset = start_y + 32
-        bar_max_width = 80
-        
-        for species, count in sorted(counts.items()):
-            label = self.font_small.render(f"{species}: {count}", True, COLOR_TEXT)
-            screen.blit(label, (start_x + 12, y_offset))
+        # 최신 로그가 아래로, 오래된 로그가 위로 쌓이게 역순으로 렌더링
+        for i, (txt, t) in enumerate(reversed(self.logs)):
+            y_pos = base_y - (i * 30)
             
-            # 최대 30마리 기준으로 막대그래프 길이 계산 (초과 시 꽉 참)
-            bar_width = min(int((count / 30.0) * bar_max_width), bar_max_width)
-            bar_x = start_x + 100
-            bar_y = y_offset + 3
-            
-            # 막대그래프 배경 (회색) 및 채우기 (초록색)
-            pygame.draw.rect(screen, (80, 80, 80), (bar_x, bar_y, bar_max_width, 8))
-            pygame.draw.rect(screen, COLOR_SUCCESS, (bar_x, bar_y, bar_width, 8))
-            
-            y_offset += 22
-            
-        # 외곽선
-        pygame.draw.rect(screen, COLOR_BORDER, (start_x, start_y, panel_w, panel_h), 2)
-        return panel_h
+            alpha = 255
+            age = current_time - t
+            # 5초가 지나면 2초 동안 서서히 투명해짐(Fade-out)
+            if age > 5.0:
+                alpha = max(0, int(255 * (1.0 - (age - 5.0) / 2.0)))
+
+            surf = self.log_font.render(txt, True, (255, 255, 255))
+            if alpha < 255:
+                surf.set_alpha(alpha)
+
+            # 반투명한 검은색 배경 박스
+            bg = pygame.Surface((surf.get_width() + 16, surf.get_height() + 8), pygame.SRCALPHA)
+            bg.fill((0, 0, 0, min(180, alpha)))
+            screen.blit(bg, (start_x, y_pos))
+            screen.blit(surf, (start_x + 8, y_pos + 4))
 
     # ══════════════════════════════════════════
     # 상단 바
@@ -167,9 +170,9 @@ class HUD:
         screen.blit(label, (mm_x + 6, mm_y - 18))
 
     # ══════════════════════════════════════════
-    # 동물 패널 (오프셋 적용)
+    # 동물 패널
     # ══════════════════════════════════════════
-    def _draw_animal_panel(self, screen, offset_y=65):
+    def _draw_animal_panel(self, screen):
         animal = self.selected_animal
         self.info_panel.fill(COLOR_BG)
 
@@ -218,12 +221,12 @@ class HUD:
             self.info_panel.blit(s, (12, 102 + i * 22))
 
         pygame.draw.rect(self.info_panel, COLOR_BORDER, (0, 0, 340, 310), 2)
-        screen.blit(self.info_panel, (16, offset_y))
+        screen.blit(self.info_panel, (16, 65))
 
     # ══════════════════════════════════════════
-    # 나무 패널 (오프셋 적용)
+    # 나무 패널
     # ══════════════════════════════════════════
-    def _draw_tree_panel(self, screen, offset_y=65):
+    def _draw_tree_panel(self, screen):
         tree = self.selected_tree
         self.info_panel.fill(COLOR_BG)
 
@@ -257,7 +260,7 @@ class HUD:
         self.info_panel.blit(guide, (12, 80 + len(rows) * 26 + 10))
 
         pygame.draw.rect(self.info_panel, COLOR_BORDER, (0, 0, 340, 310), 2)
-        screen.blit(self.info_panel, (16, offset_y))
+        screen.blit(self.info_panel, (16, 65))
 
     # ══════════════════════════════════════════
     # 조작법 안내
