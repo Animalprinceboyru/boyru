@@ -21,7 +21,7 @@ Lee = {}
 # 1. 카피바라 (Capybara)
 # ==========================================
 class Capybara(Prey):
-    SPECIES_VISION_RANGE = 200.0
+    SPECIES_VISION_RANGE = 700.0
     SPECIES_VISION_ANGLE = 270.0
     minimap_color = (210, 180, 140)  # 미니맵에 표시할 갈색
 
@@ -30,9 +30,8 @@ class Capybara(Prey):
         self.stress_level = 0.0
         self.group_size = 1
         
-        self.max_hp = 120
-        self.hp = 120
-        self.max_speed = 60.0
+        self.max_hp = 200
+        self.max_speed = 90.0
         self.escape_success_rate = 0.5
         
         # 평상시 배회를 위한 변수
@@ -239,7 +238,7 @@ class Capybara(Prey):
 # 2. 원숭이 (Monkey)
 # ==========================================
 class Monkey(Prey):
-    SPECIES_VISION_RANGE = 250.0
+    SPECIES_VISION_RANGE = 800.0
     SPECIES_VISION_ANGLE = 200.0
     minimap_color = (139, 69, 19)  # 초콜릿색
 
@@ -247,7 +246,9 @@ class Monkey(Prey):
         super().__init__(name, coordinate, danger_range=200.0, **kwargs)
         self.on_tree = False
         self.inventory = 5          
-        self.throw_power = 20.0     
+        self.throw_power = 20.0
+        self.max_hp=120
+        self.max_speed=100     
         self.max_speed = 85.0
         self.current_tree = None
         
@@ -481,8 +482,8 @@ class Monkey(Prey):
 # 3. 앵무새 (Parrot)
 # ==========================================
 class Parrot(FlyingAnimal, Prey):
-    SPECIES_VISION_RANGE = 400.0  
-    SPECIES_VISION_ANGLE = 360.0
+    SPECIES_VISION_RANGE = 1200.0  
+    SPECIES_VISION_ANGLE = 300.0
     minimap_color = (255, 50, 50)  # 미니맵에 표시할 밝은 빨간색
 
     def __init__(self, name: str, coordinate: Tuple[float, float], **kwargs):
@@ -490,6 +491,8 @@ class Parrot(FlyingAnimal, Prey):
         self.alert_range = 300.0
         self.max_speed = 70.0 
         self.flying_speed = 180.0
+        self.max_hp=60
+        self.max_speed=100
         
         self.target_coord: Optional[List[float]] = None
         self.wander_timer = 0.0

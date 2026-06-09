@@ -63,8 +63,8 @@ class Anaconda(Predator):
              추격 중이 아니면 물가로 복귀하려 배회
     """
 
-    SPECIES_VISION_RANGE: float = 200.0
-    SPECIES_VISION_ANGLE: float = 130.0
+    SPECIES_VISION_RANGE: float = 600.0
+    SPECIES_VISION_ANGLE: float = 120.0
     minimap_color = (255, 255, 0)
 
     # 행동 상태 상수
@@ -104,6 +104,8 @@ class Anaconda(Predator):
             max_accelerate=water_max_accelerate,
             **kwargs,
         )
+
+        self.max_hp=250
 
         # ── 아나콘다 전용 속성 ──
         self.choke_range: float = choke_range
@@ -517,8 +519,8 @@ class Crocodile(Predator):
       → death_roll(데스롤) → idle
       → chasing(추격, 물가 한정) → idle
     """
-    SPECIES_VISION_RANGE = 230.0
-    SPECIES_VISION_ANGLE = 110.0
+    SPECIES_VISION_RANGE = 800.0
+    SPECIES_VISION_ANGLE = 140.0
     HUNT_TARGETS = {"Capybara", "Monkey", "Parrot", "ToxicFrog"}
     HATCH_TIME   = 120.0
     minimap_color = (0, 128, 128)
@@ -557,6 +559,7 @@ class Crocodile(Predator):
         self.lurk_timeout        = lurk_timeout
         self.death_roll_dps      = death_roll_dps
         self.death_roll_duration = death_roll_duration
+        self.max_hp=350
 
         self.submerged   = False
         self._state      = self._IDLE
@@ -924,7 +927,7 @@ class Tarantula(Predator):
     명세: 거미줄 범위 안으로 들어온 동물에게 bite()로 독 효과를 부여.
     """
 
-    SPECIES_VISION_RANGE: float = 130.0
+    SPECIES_VISION_RANGE: float = 400.0
     SPECIES_VISION_ANGLE: float = 360.0   # 거미줄 진동으로 전방향 감지
     HUNT_TARGETS = {"Capybara", "Monkey"}
     HATCH_TIME   = 60.0
@@ -956,9 +959,9 @@ class Tarantula(Predator):
             attack_success_rate=1.0,       # 거미줄 접촉 시 무는 건 확정
             hunger_limit=40.0,
             chase_speed_mul=1.2,
-            max_speed=55.0,                # 육상 소형 — 느림
+            max_speed=60.0,                # 육상 소형 — 느림
             max_accelerate=160.0,
-            hp=60, max_hp=60,
+            hp=80, max_hp=80,
             size=60.0,
             **kwargs,
         )
@@ -1222,19 +1225,33 @@ class Tarantula(Predator):
 
         sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
         margin = 100
-        if not (-margin < sx < camera.screen_w + margin
-                and -margin < sy < camera.screen_h + margin):
-            return
-
-        # 거미줄 시각화 (활성 상태일 때 옅은 원)
+        # === [타란툴라 거미줄 렌더링 최적화] ===
         if self.web_active and self.web_center is not None:
             wcx, wcy = camera.world_to_screen(self.web_center[0], self.web_center[1])
             web_r = max(1, int(self.web_range * camera.zoom))
-            web_surf = pygame.Surface((web_r * 2 + 2, web_r * 2 + 2), pygame.SRCALPHA)
-            pygame.draw.circle(web_surf, (230, 230, 230, 40), (web_r + 1, web_r + 1), web_r)
-            pygame.draw.circle(web_surf, (230, 230, 230, 90), (web_r + 1, web_r + 1), web_r, 1)
-            screen.blit(web_surf, (int(wcx) - web_r - 1, int(wcy) - web_r - 1))
-
+            
+            # 💡 [최적화 1] 화면 밖이면 거미줄 렌더링 생략
+            if -web_r < wcx < camera.screen_w + web_r and -web_r < wcy < camera.screen_h + web_r:
+                
+                # 💡 [최적화 2] 투명 Surface 생성 캐싱
+                if not hasattr(self.__class__, '_web_cache'):
+                    self.__class__._web_cache = {}
+                
+                zoom_key = round(camera.zoom, 1)
+                cache_key = (zoom_key, web_r)
+                
+                if cache_key not in self.__class__._web_cache:
+                    web_surf = pygame.Surface((web_r * 2 + 2, web_r * 2 + 2), pygame.SRCALPHA)
+                    pygame.draw.circle(web_surf, (230, 230, 230, 40), (web_r + 1, web_r + 1), web_r)
+                    pygame.draw.circle(web_surf, (230, 230, 230, 90), (web_r + 1, web_r + 1), web_r, 1)
+                    self.__class__._web_cache[cache_key] = web_surf
+                
+                cached_web = self.__class__._web_cache[cache_key]
+                screen.blit(cached_web, (int(wcx) - web_r - 1, int(wcy) - web_r - 1))
+        if not (-margin < sx < camera.screen_w + margin
+                and -margin < sy < camera.screen_h + margin):
+            return
+        
         if self.image:
             sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
             
