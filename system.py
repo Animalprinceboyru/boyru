@@ -245,10 +245,12 @@ def main():
             if hasattr(animal, 'draw'):
                 animal.draw(screen, camera)
         
+        # system.py의 하단 렌더링 파트를 찾아 아래처럼 수정합니다.
         if show_fov:
-                for animal in animals:
-                    if hasattr(animal, 'draw_fov_debug'):
-                        animal.draw_fov_debug(screen, camera, color = (80, 80, 0), alpha = 80)
+            for animal in animals:
+                if hasattr(animal, 'draw_fov_debug'):
+                    # 💡 [수정] color 매개변수를 지워서 animal.py에서 정의한 고유 색상이 나오게 합니다.
+                    animal.draw_fov_debug(screen, camera, alpha=80)
 
         weather.draw(screen)
         hud.draw(screen, weather, camera, game_map, animals)
