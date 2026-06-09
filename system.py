@@ -157,10 +157,33 @@ def main():
                     print(f"시야 표시 {'ON' if show_fov else 'OFF'}")
 
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:
+                if event.button == 1:  # 좌클릭
                     mx, my = event.pos
-                    wx, wy = camera.screen_to_world(mx, my)
-                    hud.handle_click(wx, wy, animals, game_map)
+                    
+                    # 💡 [추가] gui.py에 정의된 미니맵 위치와 크기 (우측 하단)
+                    mm_x = SCREEN_WIDTH - 210
+                    mm_y = SCREEN_HEIGHT - 160
+                    mm_w = 200
+                    mm_h = 150
+
+                    # 1. 클릭한 좌표가 미니맵 내부인지 확인
+                    if mm_x <= mx <= mm_x + mm_w and mm_y <= my <= mm_y + mm_h:
+                        # 미니맵 내 클릭 위치를 0.0 ~ 1.0 비율로 계산
+                        ratio_x = (mx - mm_x) / mm_w
+                        ratio_y = (my - mm_y) / mm_h
+                        
+                        # 게임 맵 전체 픽셀 크기에 비율을 곱해 실제 월드 좌표 획득
+                        target_world_x = ratio_x * game_map.pixel_width
+                        target_world_y = ratio_y * game_map.pixel_height
+                        
+                        # 카메라 포커스 이동 (camera.py의 focus_on 메서드 활용)
+                        camera.focus_on(target_world_x, target_world_y)
+                        print(f"미니맵 이동: ({target_world_x:.0f}, {target_world_y:.0f})")
+                        
+                    # 2. 미니맵 밖을 클릭했다면 기존의 동물/나무 정보 보기 로직 실행
+                    else:
+                        wx, wy = camera.screen_to_world(mx, my)
+                        hud.handle_click(wx, wy, animals, game_map)
 
             elif event.type == pygame.MOUSEWHEEL:
                 camera.handle_zoom(event.y, pygame.mouse.get_pos())
