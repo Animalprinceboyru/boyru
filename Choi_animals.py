@@ -564,7 +564,7 @@ class ElectricEel(Predator):
             attacker.apply_stun(duration=2.0)
 
     # 기절 연계 포식 시스템 (Execution)
-    def try_attack(self, target: Animal, base_damage: float = 20.0, food_value: float = 30.0) -> bool:
+    def try_attack(self, target: Animal, base_damage: float = 20.0, food_value: float = 60.0) -> bool:
         """기절한 적에게는 100% 명중 및 2배 데미지 (처형)"""
         if not target.alive:
             self.stop_hunt()
