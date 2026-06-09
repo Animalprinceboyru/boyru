@@ -8,7 +8,9 @@ from gui import HUD
 from physics import PhysicsEngine
 from Lee_animals import Parrot, Capybara, Monkey #내가 추가
 from Choi_animals import Rhino, ElectricEel, ToxicFrog #내가 추가
-from Bae import Anaconda
+from Bae import Anaconda, Crocodile, Tarantula
+from kim import Mosquito
+import math
 
 SCREEN_WIDTH  = 1280
 SCREEN_HEIGHT = 720
@@ -38,82 +40,69 @@ def main():
     eggs = []
     show_fov = False
     
-    #내가 추가
-    animals.append(Rhino(name="대장코뿔소", coordinate=(400.0, 500.0)))
-    animals.append(ToxicFrog(name="화살독개구리", coordinate=(350.0, 450.0)))
-    # 맵 전체에서 물 타일을 수집한 뒤, 그 중 랜덤 위치에 아나콘다 스폰
-    water_tiles = [
-        (tx, ty)
-        for ty in range(game_map.map_height)
-        for tx in range(game_map.map_width)
-        if game_map.is_water(tx, ty)
-    ]
-    print(f"물 타일 {len(water_tiles)}개 발견")
+    # === [대규모 동물 스마트 스폰 시스템] ===
+    print("동물 서식지 스캔 중...")
+    
+    # 1. 맵 전체를 스캔하여 물 타일과 육지 타일을 분리하여 저장합니다.
+    water_tiles = []
+    land_tiles = []
+    for ty in range(2, game_map.map_height - 2): # 맵 가장자리 제외
+        for tx in range(2, game_map.map_width - 2):
+            if game_map.is_water(tx, ty):
+                water_tiles.append((tx, ty))
+            else:
+                land_tiles.append((tx, ty))
 
-    for i in range(11):
-        if not water_tiles:
-            break
+    print(f"발견된 물 구역: {len(water_tiles)} / 육지 구역: {len(land_tiles)}")
+
+    # 2. 스폰을 쉽게 해주는 도우미 함수
+    def get_random_water_pos():
         tx, ty = random.choice(water_tiles)
-        px = tx * TILE_SIZE + TILE_SIZE / 2   # 타일 → 픽셀(중심) 변환
-        py = ty * TILE_SIZE + TILE_SIZE / 2
-        animals.append(Anaconda(name=f"아나콘다_{i+1}", coordinate=(px, py)))
-    # 전기뱀장어는 물 타일 근처에 스폰하는 것이 자연스럽습니다.
-    animals.append(ElectricEel(name="전기뱀장어A", coordinate=(1000.0, 1000.0)))
-    animals.append(ElectricEel(name="전기뱀장어B", coordinate=(1080.0,1000.0),sex='female'))
-    animals.append(Capybara(name="카피바라A", coordinate=(1100.0, 1100.0)))
-    animals.append(Monkey(name="원숭이A", coordinate=(1200.0, 1200.0)))
-    animals.append(Parrot(name="앵무새A", coordinate=(1300.0, 1300.0)))
+        return (tx * TILE_SIZE + TILE_SIZE / 2, ty * TILE_SIZE + TILE_SIZE / 2)
 
-    animals.append(Rhino(name="대장코뿔소", coordinate=(400.0, 500.0), age=600, sex="male"))
-    animals.append(ToxicFrog(name="화살독개구리", coordinate=(350.0, 450.0), age=600, sex="female"))
+    def get_random_land_pos():
+        tx, ty = random.choice(land_tiles)
+        return (tx * TILE_SIZE + TILE_SIZE / 2, ty * TILE_SIZE + TILE_SIZE / 2)
 
-    # ... (중략) ...
+    # 3. 수중 동물 스폰 (물 타일 위치)
+    for i in range(6):
+        animals.append(Anaconda(name=f"아나콘다_{i+1}", coordinate=get_random_water_pos(), sex="male" if i%2==0 else "female", age=600))
+        animals.append(Crocodile(name=f"악어_{i+1}", coordinate=get_random_water_pos(), sex="female" if i%2==0 else "male", age=600))
+        animals.append(ElectricEel(name=f"전기뱀장어_{i+1}", coordinate=get_random_water_pos(), sex="male" if i%2==0 else "female", age=600))
 
-    # 아나콘다 암수 교대로 생성
-    for i in range(11):
-        if not water_tiles:
-            break
-        tx, ty = random.choice(water_tiles)
-        px = tx * TILE_SIZE + TILE_SIZE / 2
-        py = ty * TILE_SIZE + TILE_SIZE / 2
-        anaconda_sex = "male" if i % 2 == 0 else "female"
-        animals.append(Anaconda(name=f"아나콘다_{i+1}", coordinate=(px, py), age=600, sex=anaconda_sex))
+    # 4. 육상 포식자 스폰 (육지 타일 위치)
+    for i in range(8):
+        animals.append(Tarantula(name=f"타란튤라_{i+1}", coordinate=get_random_land_pos(), sex="female" if i%2==0 else "male", age=600))
         
-    animals.append(ElectricEel(name="전기뱀장어A", coordinate=(1000.0, 1000.0), age=600, sex="male"))
-    animals.append(ElectricEel(name="전기뱀장어B", coordinate=(1080.0, 1000.0), age=600, sex='female'))
-    
-    # 홀로 외롭던 피식자들의 동반자 스폰 및 나이 설정
-    animals.append(Capybara(name="카피바라A", coordinate=(1100.0, 1100.0), age=600, sex="male"))
-    animals.append(Capybara(name="카피바라B", coordinate=(1150.0, 1100.0), age=600, sex="female"))
-    
-    animals.append(Monkey(name="원숭이A", coordinate=(1200.0, 1200.0), age=600, sex="male"))
-    animals.append(Monkey(name="원숭이B", coordinate=(1250.0, 1200.0), age=600, sex="female"))
-    
-    animals.append(Parrot(name="앵무새A", coordinate=(1300.0, 1300.0), age=600, sex="male"))
-    animals.append(Parrot(name="앵무새B", coordinate=(1350.0, 1300.0), age=600, sex="female"))
+    for i in range(10):
+        animals.append(ToxicFrog(name=f"독개구리_{i+1}", coordinate=get_random_land_pos(), sex="male" if i%2==0 else "female", age=600))
 
-    # 독개구리들도 암수 분배
-    for i in range(5):
-        rx = random.uniform(500.0, 1500.0)
-        ry = random.uniform(500.0, 1500.0)
-        frog_sex = "male" if i % 2 == 0 else "female"
-        animals.append(ToxicFrog(name=f"독개구리_{i+1}", coordinate=(rx, ry), age=600, sex=frog_sex))
-
-    # 2. 반복문을 이용해 여러 마리를 랜덤 위치에 대량 스폰하기
-    for i in range(5):
-        # 안전하게 맵 중앙 부근(500 ~ 1500 픽셀 사이)에 랜덤 배치
-        rx = random.uniform(500.0, 1500.0)
-        ry = random.uniform(500.0, 1500.0)
-        animals.append(ToxicFrog(name=f"독개구리_{i+1}", coordinate=(rx, ry)))
+    # 5. 육상 피식자 스폰 (육지 타일 위치 - 무리 생활을 위해 다수 스폰)
+    for i in range(20):
+        animals.append(Capybara(name=f"카피바라_{i+1}", coordinate=get_random_land_pos(), sex="female" if i%2==0 else "male", age=600))
         
-    for i in range(2):
-        rx = 600.0 + i*50.0
-        ry = 600.0 + i*50.0
-        animals.append(Rhino(name=f"돌진코뿔소_{i+1}", coordinate=(rx, ry),sex=['male', 'female'][i%2]))
+    for i in range(15):
+        animals.append(Monkey(name=f"원숭이_{i+1}", coordinate=get_random_land_pos(), sex="male" if i%2==0 else "female", age=600))
+        
+    for i in range(12):
+        animals.append(Parrot(name=f"앵무새_{i+1}", coordinate=get_random_land_pos(), sex="female" if i%2==0 else "male", age=600))
+        
+    for i in range(4):
+        animals.append(Rhino(name=f"코뿔소_{i+1}", coordinate=get_random_land_pos(), sex="male" if i%2==0 else "female", age=600))
+
+    print(f"총 {len(animals)}마리의 동물이 성공적으로 배치되었습니다!")
+    # ========================================
 
     print("모든 시스템 초기화 완료!")
     print("WASD 이동 | 마우스 휠 줌 | [ ] 시간 배속 조절")
     #내가 추가한 부분 끝
+
+    # === [운석 충돌 시스템 변수 추가] ===
+    meteor_active = False
+    meteor_world_x = 0.0
+    meteor_world_y = 0.0
+    meteor_radius = 0.0
+    meteor_speed = 1500.0  # 붉은 원이 퍼져나가는 속도 (픽셀/초)
 
     running = True
     while running:
@@ -183,7 +172,19 @@ def main():
                     # 2. 미니맵 밖을 클릭했다면 기존의 동물/나무 정보 보기 로직 실행
                     else:
                         wx, wy = camera.screen_to_world(mx, my)
-                        hud.handle_click(wx, wy, animals, game_map)
+                        keys = pygame.key.get_pressed()
+                        
+                        # 💡 [핵심] C 키를 누른 상태로 클릭하면 운석 충돌 발생!
+                        if keys[pygame.K_c]:
+                            if not meteor_active:
+                                meteor_active = True
+                                meteor_world_x = wx
+                                meteor_world_y = wy
+                                meteor_radius = 1.0
+                                print("⚠️ 운석 충돌 경고! 생태계가 곧 파괴됩니다!")
+                        else:
+                            # C 키를 누르지 않았다면 기존의 정보 보기 로직 실행
+                            hud.handle_click(wx, wy, animals, game_map)
 
             elif event.type == pygame.MOUSEWHEEL:
                 camera.handle_zoom(event.y, pygame.mouse.get_pos())
@@ -292,6 +293,32 @@ def main():
             f"FPS: {clock.get_fps():.1f}", True, (200, 200, 200)
         )
         screen.blit(fps_surf, (SCREEN_WIDTH - 90, 52))
+        # === [운석 충돌 효과 렌더링 및 종료 처리] ===
+        if meteor_active:
+            # 원의 반지름을 시간(dt)에 비례하여 빠르게 증가시킵니다.
+            meteor_radius += meteor_speed * dt
+            sx, sy = camera.world_to_screen(meteor_world_x, meteor_world_y)
+            
+            # 파멸적인 느낌을 위해 붉은색 그라데이션 원을 겹쳐서 그립니다.
+            pygame.draw.circle(screen, (120, 0, 0), (int(sx), int(sy)), int(meteor_radius * camera.zoom))
+            pygame.draw.circle(screen, (200, 40, 40), (int(sx), int(sy)), int(meteor_radius * camera.zoom * 0.7))
+            pygame.draw.circle(screen, (255, 200, 200), (int(sx), int(sy)), int(meteor_radius * camera.zoom * 0.2))
+
+            # 충돌 지점으로부터 화면의 네 모서리 중 가장 먼 곳까지의 거리를 계산
+            max_dist = max(
+                math.hypot(sx - 0, sy - 0),
+                math.hypot(sx - SCREEN_WIDTH, sy - 0),
+                math.hypot(sx - 0, sy - SCREEN_HEIGHT),
+                math.hypot(sx - SCREEN_WIDTH, sy - SCREEN_HEIGHT)
+            )
+
+            # 붉은 원이 화면을 완전히 덮었을 때
+            if (meteor_radius * camera.zoom) >= max_dist:
+                screen.fill((0, 0, 0)) # 화면을 완전히 검게 만듦
+                pygame.display.flip()
+                print("💥 운석 충돌로 인해 아마존 생태계가 멸망했습니다.")
+                pygame.time.delay(2000) # 2초 동안 검은 화면 유지하며 대기
+                running = False # 메인 루프 종료 (프로그램 종료)
 
         pygame.display.flip()
 

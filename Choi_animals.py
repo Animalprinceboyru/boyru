@@ -136,7 +136,7 @@ class FlyingAnimal(Animal):
 # 2. 코뿔소 (Rhino)
 # ==========================================
 class Rhino(Animal):
-    SPECIES_VISION_RANGE: float = 100.0
+    SPECIES_VISION_RANGE: float = 400.0
     SPECIES_VISION_ANGLE: float = 100.0
     minimap_color = (150, 150, 150)
     def __init__(self, name: str, coordinate: Tuple[float, float], crash_power: float = 50.0, **kwargs):
@@ -145,6 +145,8 @@ class Rhino(Animal):
         self.max_speed = 90.0
         self.size=random.uniform(100,200)
         self._is_behind_tree = False # 💡 나무 뒤 숨김 효과 플래그
+        self.max_hp=600
+        self.max_speed=80
         
         # 돌진 상태 관리를 위한 변수
         self.is_charging = False
@@ -309,13 +311,13 @@ class Rhino(Animal):
         # ── 돌진 상태 업데이트 ──
         if self.is_charging and self.charge_target_coord:
             # 1. 목표 지점(연장선 끝)을 향해 2.5배속 이동
-            self.move(dt, self.charge_target_coord, speed_multiplier=2.5)
+            self.move(dt, self.charge_target_coord, speed_multiplier=25/8)
 
             # 2. 돌진 경로 상에 포식자가 있는지 충돌 판정
             if self.charge_attacker and self.charge_attacker.alive:
                 if self.distance_to(self.charge_attacker) <= 30.0:  # 충돌 반경 이내
                     print(f"💥 🦏 [{self.name}]의 초강력 박치기가 경로 상에 있던 {self.charge_attacker.name}에게 적중했습니다!")
-                    self.charge_attacker.take_damage(self.crash_power, source="rhino_crash", attacker=self)
+                    self.charge_attacker.take_damage(self.crash_power, source="rhino_crash")
                     self._stop_charge()
                     return
 
@@ -368,15 +370,16 @@ class Rhino(Animal):
 # 3. 전기뱀장어 (Electric Eel) - 포식자
 # ==========================================
 class ElectricEel(Predator):
-    SPECIES_VISION_RANGE: float = 130.0
-    SPECIES_VISION_ANGLE: float = 130.0
+    SPECIES_VISION_RANGE: float = 500.0
+    SPECIES_VISION_ANGLE: float = 360.0
     minimap_color = (0, 255, 255)
     HUNT_TARGETS={"Capybara","Monkey"}
     def __init__(self, name: str, coordinate: Tuple[float, float], electric_power: float = 30.0, **kwargs):
         super().__init__(name, coordinate, **kwargs)
         self.electric_power = electric_power
-        self.max_speed = 70.0
+        self.max_speed = 110.0
         self.size=random.uniform(80,140)
+        self.max_hp=150
         self._is_behind_tree = False # 💡 나무 뒤 숨김 효과 플래그
         
         # 💡 1. 여기서 뱀장어 전용 이미지를 설정
@@ -529,7 +532,7 @@ class ElectricEel(Predator):
             print(f"⛈️ 궂은 날씨로 인해 [{self.name}]의 전기 공격 반경이 2배로 넓어집니다!")
 
         # 1. 직접 공격 대상에게 데미지 및 기절 부여
-        target.take_damage(base_damage, source=self.name, attacker=self)
+        target.take_damage(base_damage, source=self.name)
         target.apply_stun(duration=2.5) 
         
         # 2. 자신이 물 속에 있을 경우 주변에 전류 방출
@@ -544,7 +547,7 @@ class ElectricEel(Predator):
                         shock_damage = max_aoe_damage * (1.0 - (dist / aoe_radius))
                         
                         if shock_damage > 0:
-                            a.take_damage(shock_damage, source="electric_shock", attacker=self)
+                            a.take_damage(shock_damage, source="electric_shock")
                             a.apply_stun(duration=1.5) # 광역 감전 시에도 짧게 기절
                             print(f"⚡ [{a.name}]이(가) 물을 타고 흐른 전기에 감전되었습니다! (피해량: {shock_damage:.1f})")
 
@@ -557,7 +560,7 @@ class ElectricEel(Predator):
         # 공격자가 있고, 내가 아직 살아있으며, 스태미나가 충분하다면 반격!
         if attacker and attacker.alive and self.alive and self.use_stamina(10.0):
             print(f"⚡ [{self.name}]이(가) 자신을 공격한 {attacker.name}에게 방어적 방전을 일으킵니다!")
-            attacker.take_damage(15.0, source="defensive_shock", attacker=self)
+            attacker.take_damage(15.0, source="defensive_shock")
             attacker.apply_stun(duration=2.0)
 
     # 기절 연계 포식 시스템 (Execution)
@@ -685,15 +688,16 @@ class ElectricEel(Predator):
 # 4. 독개구리 (Toxic Frog)
 # ==========================================
 class ToxicFrog(Animal):
-    SPECIES_VISION_RANGE: float = 130.0
-    SPECIES_VISION_ANGLE: float = 140.0
+    SPECIES_VISION_RANGE: float = 500.0
+    SPECIES_VISION_ANGLE: float = 180.0
     inimap_color = (144, 238, 144)
     HATCH_TIME: float = 10.0
     def __init__(self, name: str, coordinate: Tuple[float, float], poison_amount: float = 4.0, **kwargs):
         super().__init__(name, coordinate, **kwargs)
         self.poison_amount = poison_amount
-        self.max_speed = 45.0
+        self.max_speed = 50.0
         self.size = random.uniform(30,60)
+        self.max_hp=50
         self._is_behind_tree = False # 💡 나무 뒤 숨김 효과 플래그
 
         # 💡 1. 여기서 독개구리 전용 이미지를 설정
@@ -853,7 +857,7 @@ class ToxicFrog(Animal):
                     #혀가 닿는 사거리 이내일 때
                     if dist<30.0:
                         print(f"🐸 {self.name}이(가) {a.name}을(를) 잡아먹었습니다!")
-                        a.take_damage(999.0, source=self.name, attacker=self) # 모기 즉사
+                        a.take_damage(999.0, source=self.name) # 모기 즉사
                         self.eat(15.0) # 배고픔 15 회복
                         break
 

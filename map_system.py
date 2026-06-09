@@ -154,7 +154,7 @@ class GameMap:
 
         # 🍎 [추가] 사과 리스폰을 위한 타이머와 최대 개수 설정 (동물 생존을 위해 80개로 넉넉하게 설정)
         self.apple_spawn_timer = 0.0
-        self.MAX_APPLES = 80 
+        self.MAX_APPLES = 150 
 
         self._generate_map()
     
@@ -345,7 +345,7 @@ class GameMap:
 
     # 🍎 사과 생성 함수
     def _generate_apples(self):
-        for _ in range(40): # 사과 40개 스폰
+        for _ in range(80): # 사과 40개 스폰
             tx = random.randint(2, self.map_width - 3)
             ty = random.randint(2, self.map_height - 3)
             if self.tiles[ty][tx] not in (TileType.DEEP_WATER, TileType.WATER):

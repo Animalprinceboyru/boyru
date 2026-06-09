@@ -314,31 +314,53 @@ class Animal:
 
     # animal.py 파일 내 Animal 클래스의 draw_fov_debug 메서드를 아래와 같이 통째로 교체합니다.
     def draw_fov_debug(self, screen: pygame.Surface, camera,
-                       color=None, alpha: int = 70): # 💡 투명도(alpha)를 70으로 올려 조금 더 진하게 만듭니다.
-        """시야 부채꼴 디버그 렌더링. system.py에서 원하는 키에 연결해서 사용."""
+                       color=None, alpha: int = 70):
+        """시야 부채꼴 디버그 렌더링 (캐싱 및 화면 밖 제외 최적화)"""
         if not self.alive:
             return
 
         sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
         r = int(self.vision_range * camera.zoom)
         
-        # 💡 [핵심] 각 동물 클래스에 정의된 minimap_color를 가져오고, 없으면 흰색으로 처리합니다.
+        # 💡 [최적화 1] 화면 밖으로 완전히 벗어난 시야각은 연산하지 않음
+        if not (-r < sx < camera.screen_w + r and -r < sy < camera.screen_h + r):
+            return
+
         fov_color = getattr(self, 'minimap_color', (255, 255, 255))
         
-        surf = pygame.Surface((r * 2 + 2, r * 2 + 2), pygame.SRCALPHA)
-        c = (r + 1, r + 1)
-        if self.vision_angle >= 360:
-            pygame.draw.circle(surf, (*fov_color, alpha), c, r)
-        else:
-            half = math.radians(self.vision_angle / 2)
-            start = math.degrees(self.facing_angle - half)
-            end   = math.degrees(self.facing_angle + half)
-            pts = [c]
-            for i in range(21):
-                a = math.radians(start + (end - start) * i / 20)
-                pts.append((c[0] + math.cos(a) * r, c[1] + math.sin(a) * r))
-            pygame.draw.polygon(surf, (*fov_color, alpha), pts)
-        screen.blit(surf, (int(sx) - r - 1, int(sy) - r - 1))
+        # 💡 [최적화 2] 클래스 공유 캐시 도입 (매 프레임 Surface 생성 방지)
+        if not hasattr(self.__class__, '_fov_cache'):
+            self.__class__._fov_cache = {}
+            
+        # 캐시 키 생성: 줌 레벨(소수점 1자리)과 바라보는 각도(10도 단위로 묶음)
+        zoom_key = round(camera.zoom, 1)
+        angle_key = int(math.degrees(self.facing_angle) / 10) * 10
+        cache_key = (zoom_key, angle_key, r)
+        
+        if cache_key not in self.__class__._fov_cache:
+            # 해상도가 너무 커서 뻗는 것을 방지
+            max_r = min(r, 1500) 
+            surf = pygame.Surface((max_r * 2 + 2, max_r * 2 + 2), pygame.SRCALPHA)
+            c = (max_r + 1, max_r + 1)
+            
+            if self.vision_angle >= 360:
+                pygame.draw.circle(surf, (*fov_color, alpha), c, max_r)
+            else:
+                half = math.radians(self.vision_angle / 2)
+                start = math.radians(angle_key) - half
+                end   = math.radians(angle_key) + half
+                pts = [c]
+                # 폴리곤 점 개수를 줄여서 연산 최적화 (21개 -> 11개)
+                for i in range(11):
+                    a = start + (end - start) * i / 10
+                    pts.append((c[0] + math.cos(a) * max_r, c[1] + math.sin(a) * max_r))
+                pygame.draw.polygon(surf, (*fov_color, alpha), pts)
+                
+            self.__class__._fov_cache[cache_key] = surf
+            
+        # 저장된 캐시 이미지를 가져와서 그리기만 함
+        cached_surf = self.__class__._fov_cache[cache_key]
+        screen.blit(cached_surf, (int(sx) - r - 1, int(sy) - r - 1))
 
     # ── 이동 ────────────────────────────────────
 
