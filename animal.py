@@ -70,7 +70,7 @@ class Egg:
         self,
         coordinate: Tuple[float, float],
         parent: "Animal",
-        hatch_time: float = 60.0,
+        hatch_time: float = 10.0,
     ):
         self.coordinate = list(coordinate)
         self.parent = parent          # 부모 참조 (make_child 호출용)

@@ -15,7 +15,7 @@ CHOI_IMAGE_CACHE={}
 class FlyingAnimal(Animal):
     SPECIES_VISION_RANGE: float = 200.0
     SPECIES_VISION_ANGLE: float = 160.0
-    HATCH_TIME: float = 60.0 #일단 flying_animal은 모두 HATCH_TIME 통일해놓음/ 바꾸려면 이 함수 그대로 해당 클래스에 넣으면 됨(HATCH_TIME은 새로 정의)
+    HATCH_TIME: float = 10.0 #일단 flying_animal은 모두 HATCH_TIME 통일해놓음/ 바꾸려면 이 함수 그대로 해당 클래스에 넣으면 됨(HATCH_TIME은 새로 정의)
     def __init__(self, name: str, coordinate: Tuple[float, float], flying_speed: float = 120.0, **kwargs):
         super().__init__(name, coordinate, **kwargs)
         self.flying_speed = flying_speed
@@ -449,7 +449,7 @@ class ElectricEel(Predator):
             self.couple.use_stamina(breed_cost)
             
         print(f"🥚 {self.name}이(가) 물속에 알을 낳았습니다!")
-        return Egg(self.coordinate, self, hatch_time=60.0)
+        return Egg(self.coordinate, self, hatch_time=10.0)
 
     def _spawn_child(self):
         child_sex = random.choice(["male", "female"])
@@ -642,7 +642,7 @@ class ToxicFrog(Animal):
     SPECIES_VISION_RANGE: float = 130.0
     SPECIES_VISION_ANGLE: float = 140.0
     inimap_color = (144, 238, 144)
-    HATCH_TIME: float = 60.0
+    HATCH_TIME: float = 10.0
     def __init__(self, name: str, coordinate: Tuple[float, float], poison_amount: float = 4.0, **kwargs):
         super().__init__(name, coordinate, **kwargs)
         self.poison_amount = poison_amount
