@@ -24,6 +24,13 @@ TILE_COLORS = {
 
 TILE_SIZE = 32
 
+# 🍎 사과 클래스 추가
+@dataclass
+class Apple:
+    x: float
+    y: float
+    heal_amount: float = 30.0
+
 @dataclass
 class Tree:
     tile_x:       int
@@ -82,6 +89,8 @@ class GameMap:
                       for _ in range(map_height)]
         self.trees:    List[Tree] = []
         self.tree_map: dict       = {}
+        
+        self.apples: List[Apple] = [] # 🍎 맵에 사과 리스트 추가
 
         self.surface      = None
         self.needs_redraw = True
@@ -118,6 +127,7 @@ class GameMap:
         self._generate_jungle_zones()
         self._generate_spaced_trees()
         self._add_nests()
+        self._generate_apples() # 🍎 맵 생성 시 사과 뿌리기
 
     def _generate_base_terrain(self):
         for y in range(self.map_height):
@@ -204,7 +214,6 @@ class GameMap:
                     self.tiles[y][x] = TileType.UNDERGROWTH
 
     def _generate_spaced_trees(self):
-        """2×2 ~ 4×4 타일 크기의 나무를 겹치지 않게 배치"""
         occupied: Set[Tuple[int,int]] = set()
 
         for y in range(self.map_height):
@@ -226,7 +235,6 @@ class GameMap:
             tree_type = random.choices(
                 ["normal", "tall", "wide"], weights=[45, 35, 20])[0]
             
-            # 2×2 ~ 4×4 랜덤 크기
             width_tiles = random.randint(2, 4)
             height_tiles = random.randint(2, 4)
 
@@ -236,7 +244,6 @@ class GameMap:
                         height_tiles=height_tiles)
             fp   = tree.footprint_area()
 
-            # 맵 경계 체크
             if (tx + width_tiles >= self.map_width - 2 or
                     ty + height_tiles >= self.map_height - 2):
                 continue
@@ -257,13 +264,22 @@ class GameMap:
             if random.random() < probs.get(tree.tree_type, 0.06):
                 tree.has_nest = True
 
+    # 🍎 사과 생성 함수
+    def _generate_apples(self):
+        for _ in range(40): # 사과 40개 스폰
+            tx = random.randint(2, self.map_width - 3)
+            ty = random.randint(2, self.map_height - 3)
+            if self.tiles[ty][tx] not in (TileType.DEEP_WATER, TileType.WATER):
+                px = tx * TILE_SIZE + random.randint(4, TILE_SIZE - 4)
+                py = ty * TILE_SIZE + random.randint(4, TILE_SIZE - 4)
+                self.apples.append(Apple(x=px, y=py))
+
     # ══════════════════════════════════════════
     # 렌더링
     # ══════════════════════════════════════════
     def render_to_surface(self):
         self.surface = pygame.Surface((self.pixel_width, self.pixel_height))
 
-        # 1. 바닥 타일
         for y in range(self.map_height):
             for x in range(self.map_width):
                 base  = TILE_COLORS[self.tiles[y][x]]
@@ -272,17 +288,14 @@ class GameMap:
                 pygame.draw.rect(self.surface, color,
                                  (x*TILE_SIZE, y*TILE_SIZE, TILE_SIZE, TILE_SIZE))
 
-        # 2. 밀림 바닥 디테일
         self._draw_jungle_details()
 
-        # 3. 나무 (Y축 정렬로 깊이감)
         for tree in sorted(self.trees, key=lambda t: t.tile_y):
             self._draw_pixel_tree(tree)
 
         self.needs_redraw = False
 
     def _draw_jungle_details(self):
-        """강 물결, 연잎, 고사리, 버섯 등 밀림 디테일"""
         for y in range(self.map_height):
             for x in range(self.map_width):
                 tile = self.tiles[y][x]
@@ -298,7 +311,6 @@ class GameMap:
                             self.surface, color,
                             (px + int(wn*14), py + TILE_SIZE//2, TILE_SIZE//2, 2))
                     elif wn < 0.06 and tile == TileType.WATER:
-                        # 연잎 (직사각형 블록 스타일)
                         pygame.draw.rect(self.surface, (45, 110, 45),
                                          (px+8, py+8, 16, 16))
                         pygame.draw.rect(self.surface, (25, 70, 25),
@@ -307,7 +319,6 @@ class GameMap:
                 elif tile == TileType.UNDERGROWTH:
                     fn = self._noise(x*3, y*3, seed=111)
                     if fn > 0.75:
-                        # 고사리 (십자 블록)
                         pygame.draw.rect(self.surface, (30, 70, 30),
                                          (px+4, py+16, 12, 3))
                         pygame.draw.rect(self.surface, (30, 70, 30),
@@ -315,14 +326,12 @@ class GameMap:
                         pygame.draw.rect(self.surface, (40, 85, 40),
                                          (px+8, py+12, 8, 6))
                     elif fn < 0.1:
-                        # 버섯 (작은 블록)
                         pygame.draw.rect(self.surface, (80, 60, 40),
                                          (px+14, py+20, 4, 6))
                         pygame.draw.rect(self.surface, (120, 80, 50),
                                          (px+11, py+16, 10, 6))
 
     def _draw_pixel_tree(self, tree: Tree):
-        """크기(2~4타일)에 따라 다르게 렌더링되는 픽셀아트 나무"""
         px, py = tree.pixel_pos
         w_size = tree.width_tiles
         h_size = tree.height_tiles
@@ -332,13 +341,11 @@ class GameMap:
                              (px - TILE_SIZE, py, TILE_SIZE * w_size, TILE_SIZE // 2))
             return
 
-        # 크기에 비례한 나무 치수 계산
         trunk_h  = int(TILE_SIZE * (1.5 + h_size * 0.3))
         trunk_w  = int(TILE_SIZE * (0.3 + w_size * 0.1))
         canopy_w = int(TILE_SIZE * (1.8 + w_size * 0.5))
         layers   = max(3, w_size + h_size - 1)
 
-        # 나무 타입별 보정
         if tree.tree_type == "tall":
             trunk_h  = int(trunk_h  * 1.35)
             canopy_w = int(canopy_w * 0.85)
@@ -348,7 +355,6 @@ class GameMap:
 
         canopy_base_y = py - trunk_h
 
-        # 1. 타원형 그림자 (블록 스타일)
         shadow_w = int(canopy_w * 1.2)
         shadow_h = max(8, TILE_SIZE // 2)
         shadow_surf = pygame.Surface((shadow_w, shadow_h), pygame.SRCALPHA)
@@ -359,7 +365,6 @@ class GameMap:
                          (0, 0, shadow_w, shadow_h))
         self.surface.blit(shadow_surf, (px - shadow_w//2, py + TILE_SIZE//4))
 
-        # 2. 기둥
         trunk_colors = {
             "normal": (50, 32, 18),
             "tall":   (42, 26, 14),
@@ -371,17 +376,14 @@ class GameMap:
 
         pygame.draw.rect(self.surface, tc,
                          (tx, ty_trunk, trunk_w, trunk_h))
-        # 기둥 하이라이트 (왼쪽)
         pygame.draw.rect(self.surface,
                          tuple(min(255, c + 10) for c in tc),
                          (tx + 2, ty_trunk + 4, max(2, trunk_w//5), trunk_h - 8))
-        # 기둥 그림자 (오른쪽)
         pygame.draw.rect(self.surface,
                          tuple(max(0, c - 14) for c in tc),
                          (tx + trunk_w - max(3, trunk_w//5), ty_trunk,
                           max(3, trunk_w//5), trunk_h))
 
-        # 3. 덩굴 (크기가 클수록 덩굴 많음)
         vine_count = max(1, (w_size + h_size) // 2 - 1)
         rng = tree.tile_x * 17 + tree.tile_y * 23
         for i in range(vine_count):
@@ -393,7 +395,6 @@ class GameMap:
                 pygame.draw.rect(self.surface, (25, 60, 25),
                                  (vx - 2, ly, 6, 4))
 
-        # 4. 수관 (레이어별 블록, 크기에 비례)
         canopy_palettes = {
             "normal": [(12,40,15),(18,55,20),(28,75,28),(40,95,35)],
             "tall":   [(10,35,12),(15,50,18),(25,70,25),(35,85,30),(48,105,38)],
@@ -409,14 +410,12 @@ class GameMap:
             color = palette[min(i, len(palette) - 1)]
             pygame.draw.rect(self.surface, color, (cx, cy, cw, ch))
 
-        # 수관 상단 이슬 하이라이트
         top_cw = int(canopy_w * (1.0 - (layers-1) * 0.10))
         top_cy = canopy_base_y - (layers-1) * (8 + max(w_size, h_size))
         hl     = tuple(min(255, c + 18) for c in palette[-1])
         pygame.draw.rect(self.surface, hl,
                          (px - top_cw//2 + 3, top_cy, top_cw - 6, 3))
 
-        # 5. 둥지 (크기에 비례)
         if tree.has_nest:
             nest_w = TILE_SIZE + (max(w_size, h_size) - 2) * 6
             nest_h = TILE_SIZE // 2 + (max(w_size, h_size) - 2) * 3
@@ -460,6 +459,14 @@ class GameMap:
                                      self.pixel_width, self.pixel_height))
             screen.blit(self.surface, (0, 0), src)
 
+        # 🍎 렌더링 마지막 부분: 화면 위의 사과들을 그려줍니다!
+        for apple in self.apples:
+            sx = (apple.x - camera_x) * zoom
+            sy = (apple.y - camera_y) * zoom
+            if -20 <= sx <= screen_w + 20 and -20 <= sy <= screen_h + 20:
+                pygame.draw.circle(screen, (220, 40, 40), (int(sx), int(sy)), max(1, int(5 * zoom)))
+                pygame.draw.circle(screen, (40, 200, 40), (int(sx - 2*zoom), int(sy - 3*zoom)), max(1, int(2 * zoom)))
+
     # ══════════════════════════════════════════
     # 유틸리티
     # ══════════════════════════════════════════
@@ -485,8 +492,16 @@ class GameMap:
               f"({tree.width_tiles}x{tree.height_tiles}) "
               f"@ ({tree.tile_x}, {tree.tile_y})")
 
+    def is_walkable(self, tx: int, ty: int) -> bool:
+        return self.get_tile(tx, ty) not in (TileType.DEEP_WATER,)
+
     def is_water(self, tx: int, ty: int) -> bool:
-        self.get_tile(tx, ty) in (TileType.WATER, TileType.DEEP_WATER)
+        return self.get_tile(tx, ty) in (TileType.WATER, TileType.DEEP_WATER)
+    
+    def is_in_water(self, px: float, py: float) -> bool:
+        tx = int(px // TILE_SIZE)
+        ty = int(py // TILE_SIZE)
+        return self.is_water(tx, ty)
 
     def get_environment(self, px: float, py: float) -> str:
         tx = int(px // TILE_SIZE)
