@@ -17,6 +17,26 @@ SCREEN_HEIGHT = 720
 FPS           = 60
 TITLE         = "밀림의 왕자 보이루 - 아마존 생태계 시뮬레이터"
 
+# === [핵심] 터미널 print() 출력을 가로채서 GUI로 보내는 클래스 ===
+class LogCatcher:
+    def __init__(self, original_stdout, hud):
+        self.original_stdout = original_stdout
+        self.hud = hud
+
+    def write(self, message):
+        # 1. 원래대로 터미널에도 출력
+        self.original_stdout.write(message) 
+        
+        # 2. 게임 내 GUI HUD 에도 로그 전달
+        for line in message.splitlines():
+            clean_line = line.strip()
+            if clean_line:
+                self.hud.add_log(clean_line)
+
+    def flush(self):
+        self.original_stdout.flush()
+# ==========================================================
+
 def main():
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
@@ -35,6 +55,10 @@ def main():
     weather = WeatherSystem(SCREEN_WIDTH, SCREEN_HEIGHT)
     hud     = HUD(SCREEN_WIDTH, SCREEN_HEIGHT)
     physics = PhysicsEngine()
+
+    # 💡 여기서 터미널의 출력을 훔쳐서 hud 객체로 연결합니다!
+    # 이후의 모든 print 문장은 게임 화면 좌측 하단에 나타나게 됩니다.
+    sys.stdout = LogCatcher(sys.stdout, hud)
 
     animals = []
     eggs = []
@@ -167,7 +191,6 @@ def main():
                         
                         # 카메라 포커스 이동 (camera.py의 focus_on 메서드 활용)
                         camera.focus_on(target_world_x, target_world_y)
-                        print(f"미니맵 이동: ({target_world_x:.0f}, {target_world_y:.0f})")
                         
                     # 2. 미니맵 밖을 클릭했다면 기존의 동물/나무 정보 보기 로직 실행
                     else:
@@ -293,18 +316,16 @@ def main():
             f"FPS: {clock.get_fps():.1f}", True, (200, 200, 200)
         )
         screen.blit(fps_surf, (SCREEN_WIDTH - 90, 52))
+        
         # === [운석 충돌 효과 렌더링 및 종료 처리] ===
         if meteor_active:
-            # 원의 반지름을 시간(dt)에 비례하여 빠르게 증가시킵니다.
             meteor_radius += meteor_speed * dt
             sx, sy = camera.world_to_screen(meteor_world_x, meteor_world_y)
             
-            # 파멸적인 느낌을 위해 붉은색 그라데이션 원을 겹쳐서 그립니다.
             pygame.draw.circle(screen, (120, 0, 0), (int(sx), int(sy)), int(meteor_radius * camera.zoom))
             pygame.draw.circle(screen, (200, 40, 40), (int(sx), int(sy)), int(meteor_radius * camera.zoom * 0.7))
             pygame.draw.circle(screen, (255, 200, 200), (int(sx), int(sy)), int(meteor_radius * camera.zoom * 0.2))
 
-            # 충돌 지점으로부터 화면의 네 모서리 중 가장 먼 곳까지의 거리를 계산
             max_dist = max(
                 math.hypot(sx - 0, sy - 0),
                 math.hypot(sx - SCREEN_WIDTH, sy - 0),
@@ -312,13 +333,12 @@ def main():
                 math.hypot(sx - SCREEN_WIDTH, sy - SCREEN_HEIGHT)
             )
 
-            # 붉은 원이 화면을 완전히 덮었을 때
             if (meteor_radius * camera.zoom) >= max_dist:
-                screen.fill((0, 0, 0)) # 화면을 완전히 검게 만듦
+                screen.fill((0, 0, 0)) 
                 pygame.display.flip()
                 print("💥 운석 충돌로 인해 아마존 생태계가 멸망했습니다.")
-                pygame.time.delay(2000) # 2초 동안 검은 화면 유지하며 대기
-                running = False # 메인 루프 종료 (프로그램 종료)
+                pygame.time.delay(2000) 
+                running = False 
 
         pygame.display.flip()
 

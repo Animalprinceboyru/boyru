@@ -1,5 +1,5 @@
 import pygame
-import time # 로그 타이머를 위해 추가
+import time
 from typing import Optional, List, Any
 
 COLOR_BG        = (20, 25, 20, 200)
@@ -20,7 +20,7 @@ class HUD:
             self.font_title  = pygame.font.SysFont("malgungothic", 20, bold=True)
             self.font_normal = pygame.font.SysFont("malgungothic", 15)
             self.font_small  = pygame.font.SysFont("malgungothic", 12)
-            self.log_font    = pygame.font.SysFont("malgungothic", 15, bold=True) # 로그용 폰트
+            self.log_font    = pygame.font.SysFont("malgungothic", 15, bold=True)
         except Exception:
             self.font_title  = pygame.font.SysFont(None, 24, bold=True)
             self.font_normal = pygame.font.SysFont(None, 18)
@@ -34,7 +34,6 @@ class HUD:
         self.selected_animal: Optional[Any] = None
         self.selected_tree:   Optional[Any] = None
         
-        # 실시간 전투/이벤트 로그를 저장할 리스트
         self.logs = [] 
 
     # ══════════════════════════════════════════
@@ -43,9 +42,7 @@ class HUD:
     def add_log(self, text: str):
         clean_text = text.strip()
         if clean_text:
-            # (출력할 텍스트, 생성된 시간) 저장
             self.logs.append((clean_text, time.time()))
-            # 화면에 너무 많은 줄이 생기지 않도록 최대 8줄 유지
             if len(self.logs) > 8:
                 self.logs.pop(0)
 
@@ -57,8 +54,10 @@ class HUD:
         self._draw_minimap(screen, camera, game_map, animals)
         self._draw_controls(screen, weather_system)
         
-        # 실시간 로그 렌더링 추가
         self._draw_logs(screen)
+        
+        # 💡 좌측 상단 개체수 현황판 렌더링 추가
+        self._draw_population(screen, animals)
 
         if self.selected_animal is not None:
             self._draw_animal_panel(screen)
@@ -66,27 +65,70 @@ class HUD:
             self._draw_tree_panel(screen)
 
     # ══════════════════════════════════════════
+    # 생태계 개체수 현황판 (좌측 상단)
+    # ══════════════════════════════════════════
+    def _draw_population(self, screen, animals):
+        counts = {}
+        for a in animals:
+            if getattr(a, 'alive', False):
+                cname = type(a).__name__
+                counts[cname] = counts.get(cname, 0) + 1
+        
+        # 한글 이름 매핑
+        kor_names = {
+            "Capybara": "카피바라", "Monkey": "원숭이", "Parrot": "앵무새", 
+            "ToxicFrog": "독개구리", "Mosquito": "모기", "Anaconda": "아나콘다", 
+            "Crocodile": "악어", "Tarantula": "타란튤라", "Rhino": "코뿔소", 
+            "ElectricEel": "전기뱀장어"
+        }
+        
+        pad_x, pad_y = 12, 12
+        line_h = 22
+        width = 170
+        height = pad_y * 2 + 25 + len(counts) * line_h
+        
+        start_x = 16
+        start_y = 65
+        
+        bg = pygame.Surface((width, height), pygame.SRCALPHA)
+        bg.fill(COLOR_BG)
+        pygame.draw.rect(bg, COLOR_BORDER, (0, 0, width, height), 2)
+        screen.blit(bg, (start_x, start_y))
+        
+        ts = self.font_title.render("[생태계 개체수]", True, COLOR_HIGHLIGHT)
+        screen.blit(ts, (start_x + pad_x, start_y + pad_y))
+        
+        sorted_counts = sorted(counts.items(), key=lambda x: x[1], reverse=True)
+        for i, (eng_name, cnt) in enumerate(sorted_counts):
+            kor_name = kor_names.get(eng_name, eng_name)
+            
+            # 포식자와 피식자의 색상을 구분
+            if eng_name in ["Anaconda", "Crocodile", "Tarantula", "ElectricEel", "ToxicFrog"]:
+                text_color = (255, 160, 160) # 붉은 계열
+            else:
+                text_color = (160, 255, 160) # 푸른 계열
+                
+            s = self.font_normal.render(f"{kor_name} : {cnt}마리", True, text_color)
+            screen.blit(s, (start_x + pad_x, start_y + pad_y + 28 + i * line_h))
+
+    # ══════════════════════════════════════════
     # 화면 로그 렌더링
     # ══════════════════════════════════════════
     def _draw_logs(self, screen):
         current_time = time.time()
-        # 생성된 지 7초가 지난 로그는 자동으로 리스트에서 삭제
         self.logs = [(txt, t) for txt, t in self.logs if current_time - t < 7.0]
 
         if not self.logs:
             return
 
-        # 로그를 표시할 위치 (조작법 패널 우측 빈 공간)
         start_x = 290
         base_y = self.screen_h - 40
         
-        # 최신 로그가 아래로, 오래된 로그가 위로 쌓이게 역순으로 렌더링
         for i, (txt, t) in enumerate(reversed(self.logs)):
             y_pos = base_y - (i * 30)
             
             alpha = 255
             age = current_time - t
-            # 5초가 지나면 2초 동안 서서히 투명해짐(Fade-out)
             if age > 5.0:
                 alpha = max(0, int(255 * (1.0 - (age - 5.0) / 2.0)))
 
@@ -94,7 +136,6 @@ class HUD:
             if alpha < 255:
                 surf.set_alpha(alpha)
 
-            # 반투명한 검은색 배경 박스
             bg = pygame.Surface((surf.get_width() + 16, surf.get_height() + 8), pygame.SRCALPHA)
             bg.fill((0, 0, 0, min(180, alpha)))
             screen.blit(bg, (start_x, y_pos))
@@ -170,18 +211,16 @@ class HUD:
         screen.blit(label, (mm_x + 6, mm_y - 18))
 
     # ══════════════════════════════════════════
-    # 동물 패널
+    # 동물 패널 (우측 상단으로 위치 조정)
     # ══════════════════════════════════════════
     def _draw_animal_panel(self, screen):
         animal = self.selected_animal
         self.info_panel.fill(COLOR_BG)
 
-        # 이름
         name = type(animal).__name__
         ts   = self.font_title.render(f"[동물] {name.upper()}", True, COLOR_HIGHLIGHT)
         self.info_panel.blit(ts, (12, 12))
 
-        # 체력 / 스태미나 바
         hp  = getattr(animal, 'hp',          100)
         mhp = getattr(animal, 'max_hp',      100)
         st  = getattr(animal, 'stamina',     100)
@@ -189,7 +228,6 @@ class HUD:
         self._bar(self.info_panel, 12, 40, 316, 16, hp, mhp, COLOR_HP,      "체력")
         self._bar(self.info_panel, 12, 62, 316, 16, st, mst, COLOR_STAMINA, "스태미나")
 
-        # 상태 이상
         status = []
         if getattr(animal, 'is_stunned',  False): status.append("스턴")
         if getattr(animal, 'is_poisoned', False): status.append("독")
@@ -201,7 +239,6 @@ class HUD:
         ss = self.font_small.render(f"상태: {status_str}", True, sc)
         self.info_panel.blit(ss, (12, 85))
 
-        # 기본 정보
         hunger = getattr(animal, 'hunger', '?')
         thirst = getattr(animal, 'thirst', '?')
         rows = [
@@ -221,10 +258,14 @@ class HUD:
             self.info_panel.blit(s, (12, 102 + i * 22))
 
         pygame.draw.rect(self.info_panel, COLOR_BORDER, (0, 0, 340, 310), 2)
-        screen.blit(self.info_panel, (16, 65))
+        
+        # 💡 좌측 상단 개체수 패널과 겹치지 않게 우측 상단으로 이동
+        panel_x = self.screen_w - 340 - 16
+        panel_y = 65
+        screen.blit(self.info_panel, (panel_x, panel_y))
 
     # ══════════════════════════════════════════
-    # 나무 패널
+    # 나무 패널 (우측 상단으로 위치 조정)
     # ══════════════════════════════════════════
     def _draw_tree_panel(self, screen):
         tree = self.selected_tree
@@ -260,7 +301,11 @@ class HUD:
         self.info_panel.blit(guide, (12, 80 + len(rows) * 26 + 10))
 
         pygame.draw.rect(self.info_panel, COLOR_BORDER, (0, 0, 340, 310), 2)
-        screen.blit(self.info_panel, (16, 65))
+        
+        # 💡 좌측 상단 개체수 패널과 겹치지 않게 우측 상단으로 이동
+        panel_x = self.screen_w - 340 - 16
+        panel_y = 65
+        screen.blit(self.info_panel, (panel_x, panel_y))
 
     # ══════════════════════════════════════════
     # 조작법 안내
@@ -318,7 +363,6 @@ class HUD:
     # ══════════════════════════════════════════
     def handle_click(self, world_x: float, world_y: float,
                      animals: List[Any], game_map):
-        # 1. 동물 우선
         best, best_dist = None, float('inf')
         for animal in animals:
             if not hasattr(animal, 'coordinate'):
@@ -335,7 +379,6 @@ class HUD:
                   f"@ ({best.coordinate[0]:.0f}, {best.coordinate[1]:.0f})")
             return
 
-        # 2. 나무
         try:
             tree = game_map.get_tree_at_pixel(world_x, world_y)
             if tree is not None:
@@ -349,6 +392,5 @@ class HUD:
         except Exception as e:
             print(f"나무 선택 오류: {e}")
 
-        # 3. 빈 공간
         self.selected_animal = None
         self.selected_tree   = None
