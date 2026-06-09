@@ -104,8 +104,3 @@ class Camera:
         max_y = max(0.0, self.map_h - self.screen_h / self.zoom)
         self.target_x = max(0.0, min(max_x, self.target_x))
         self.target_y = max(0.0, min(max_y, self.target_y))
-
-    @property
-    def int_x(self): return int(self.x)
-    @property
-    def int_y(self): return int(self.y)
