@@ -252,12 +252,6 @@ class Animal:
             return result
         return has_line_of_sight(self, target.coordinate, game_map)
 
-    def can_see_point(self, point: Tuple[float, float], game_map) -> bool:
-        return has_line_of_sight(self, point, game_map)
-
-    def get_visible_animals(self, animals: List["Animal"], game_map) -> List["Animal"]:
-        return [a for a in animals if a is not self and self.can_see(a, game_map)]
-
     def _update_facing(self):
         spd = math.hypot(*self.velocity)
         if spd > 0.1:
@@ -366,10 +360,7 @@ class Animal:
     def eat(self, food_value: float = 30.0):
         self.hunger = max(0.0, self.hunger - food_value)
         self.heal(food_value * 0.1)
-
-    def drink(self, water_value: float = 30.0):
-        self.thirst = max(0.0, self.thirst - water_value)
-
+    
     # ── 공격 ────────────────────────────────────
 
     def attack(self, target: "Animal", damage: float = 10.0):
@@ -398,14 +389,7 @@ class Animal:
 
     def _home_speed_multiplier(self) -> float:
         return 1.15 if self.near_home() else 1.0
-
-    def detect_nearby(self, animals: List["Animal"], game_map=None) -> List["Animal"]:
-        if game_map is not None:
-            return self.get_visible_animals(animals, game_map)
-        return [a for a in animals
-                if a is not self and a.alive
-                and self.distance_to(a) <= self.vision_range]
-
+    
     # ── 커플 맺기 ────────────────────────────────
 
     COUPLE_RANGE: float = 80.0  # 하위 클래스에서 덮어쓰기 가능

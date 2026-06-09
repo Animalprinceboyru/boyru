@@ -4,23 +4,6 @@ from typing import Tuple, List, Any
 class PhysicsEngine:
 
     @staticmethod
-    def move_towards(current_pos: Tuple[float,float],
-                     target_pos:  Tuple[float,float],
-                     speed: float, dt: float) -> Tuple[float,float]:
-        cx, cy = current_pos
-        tx, ty = target_pos
-        dx, dy = tx - cx, ty - cy
-        dist   = math.sqrt(dx*dx + dy*dy)
-        if dist <= speed * dt or dist == 0:
-            return target_pos
-        return (cx + dx/dist * speed * dt,
-                cy + dy/dist * speed * dt)
-
-    @staticmethod
-    def check_collision(p1, r1, p2, r2) -> bool:
-        return math.sqrt((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2) < r1 + r2
-
-    @staticmethod
     def apply_separation(animals: List[Any], sep: float = 20.0):
         for i, a1 in enumerate(animals):
             if not hasattr(a1, 'coordinate'):

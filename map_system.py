@@ -485,16 +485,8 @@ class GameMap:
               f"({tree.width_tiles}x{tree.height_tiles}) "
               f"@ ({tree.tile_x}, {tree.tile_y})")
 
-    def is_walkable(self, tx: int, ty: int) -> bool:
-        return self.get_tile(tx, ty) not in (TileType.DEEP_WATER,)
-
     def is_water(self, tx: int, ty: int) -> bool:
-        return self.get_tile(tx, ty) in (TileType.WATER, TileType.DEEP_WATER)
-    
-    def is_in_water(self, px: float, py: float) -> bool:
-        tx = int(px // TILE_SIZE)
-        ty = int(py // TILE_SIZE)
-        return self.is_water(tx, ty)
+        self.get_tile(tx, ty) in (TileType.WATER, TileType.DEEP_WATER)
 
     def get_environment(self, px: float, py: float) -> str:
         tx = int(px // TILE_SIZE)
