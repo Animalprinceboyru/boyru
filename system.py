@@ -1,8 +1,7 @@
 import pygame
 import sys
 import random #내가 추가
-from Lee_animals import Capybara
-from map_system import TILE_SIZE, GameMap
+from map_system import GameMap, TILE_SIZE
 from camera import Camera
 from weather import WeatherSystem
 from gui import HUD
@@ -41,25 +40,24 @@ def main():
     #내가 추가
     animals.append(Rhino(name="대장코뿔소", coordinate=(400.0, 500.0)))
     animals.append(ToxicFrog(name="화살독개구리", coordinate=(350.0, 450.0)))
-    animals.append(Anaconda(name="아나콘다", coordinate=(600.0, 400.0)))
-    animals.append(Capybara(name='카피바라',coordinate=(1000,1000)))
-    
-    # 💡 [수정] 맵 전체를 돌며 물(WATER, DEEP_WATER) 타일의 좌표를 수집
-    water_tiles = []
-    for ty in range(game_map.map_height):
-        for tx in range(game_map.map_width):
-            if game_map.is_water(tx, ty):
-                water_tiles.append((tx, ty))
+    # 맵 전체에서 물 타일을 수집한 뒤, 그 중 랜덤 위치에 아나콘다 스폰
+    water_tiles = [
+        (tx, ty)
+        for ty in range(game_map.map_height)
+        for tx in range(game_map.map_width)
+        if game_map.is_water(tx, ty)
+    ]
+    print(f"물 타일 {len(water_tiles)}개 발견")
 
-    # 전기뱀장어 11마리 스폰 구조
     for i in range(11):
         if not water_tiles:
             break
-        # 💡 [수정] 중복되었던 random.choice 줄을 하나로 정리
         tx, ty = random.choice(water_tiles)
-        px = tx * TILE_SIZE + TILE_SIZE / 2
+        px = tx * TILE_SIZE + TILE_SIZE / 2   # 타일 → 픽셀(중심) 변환
         py = ty * TILE_SIZE + TILE_SIZE / 2
-        animals.append(Anaconda(name=f"전기뱀장어_{i+1}", coordinate=(px, py)))
+        animals.append(Anaconda(name=f"아나콘다_{i+1}", coordinate=(px, py)))
+    # 전기뱀장어는 물 타일 근처에 스폰하는 것이 자연스럽습니다.
+    animals.append(ElectricEel(name="전기뱀장어A", coordinate=(1000.0, 1000.0)))
 
     # 2. 반복문을 이용해 여러 마리를 랜덤 위치에 대량 스폰하기
     for i in range(5):
@@ -129,8 +127,19 @@ def main():
 
         # ── 업데이트 ──
         keys = pygame.key.get_pressed()
+        
+        # 카메라는 현실 시간에 맞춰 부드럽게 이동해야 하므로 원래 dt 사용
         camera.update(dt, keys)
+        # 날씨 시스템은 내부적으로 시계에 배속을 계산하고 있으므로 원래 dt 사용
         weather.update(dt)
+
+        # 💡 [핵심 수정] 동물들에게 적용될 '게임 내 시간(game_dt)'을 계산
+        game_dt = dt * weather.time_speed
+
+        for animal in animals:
+            if hasattr(animal, 'update'):
+                # 기존의 dt 대신 배속이 곱해진 game_dt를 넘겨줌!
+                animal.update(game_dt, game_map, weather, animals)
 
         for animal in animals:
             if hasattr(animal, 'update'):

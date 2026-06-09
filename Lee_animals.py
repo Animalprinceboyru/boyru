@@ -4,7 +4,8 @@ import math
 from typing import Tuple, List, Optional
 
 # base_classes 대신 실제 파일인 animal에서 import
-from animal import Animal, Prey, TILE_SIZE 
+from animal import Animal, Prey, TILE_SIZE
+import camera 
 
 # 최강빈 조원이 만든 클래스가 Choi_animals.py 에 있으므로 정상 참조
 try:
@@ -69,6 +70,15 @@ class Capybara(Prey):
 
     def draw(self, screen: pygame.Surface, camera):
         if not self.alive:
+            return
+        
+        # 1. 화면 좌표를 먼저 계산합니다.
+        sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
+        
+        # 💡 [최적화 핵심] 동물이 화면을 완전히 벗어났다면 아예 연산(스케일, 회전)을 하지 않고 종료합니다.
+        # 여유 공간(margin)을 약 100픽셀 정도 두어 자연스럽게 사라지도록 합니다.
+        margin = 100
+        if not (-margin < sx < camera.screen_w + margin and -margin < sy < camera.screen_h + margin):
             return
 
         if self.image:
@@ -174,7 +184,7 @@ class Capybara(Prey):
             self.predator_detected = False
             self.stress_level = max(0.0, self.stress_level - 6.0 * dt)
             
-            # 평화로운 상황에서의 배회 메커니즘
+            # Lee_animals.py - Capybara 클래스 update 메서드 하단 배회 부분
             self.wander_timer -= dt
             if self.wander_timer <= 0 or not self.target_coord:
                 self.wander_timer = random.uniform(3.0, 6.0)
@@ -182,8 +192,8 @@ class Capybara(Prey):
                 ry = self.coordinate[1] + random.uniform(-200.0, 200.0)
                 
                 # 맵 영역을 벗어나지 않도록 좌표 제한
-                rx = max(32.0, min(float(game_map.pixel_width - 32), rx))
-                ry = max(32.0, min(float(game_map.pixel_height - 32), ry))
+                rx = max(50.0, min(float(game_map.pixel_width - 50.0), rx))
+                ry = max(50.0, min(float(game_map.pixel_height - 50.0), ry))
                 self.target_coord = [rx, ry]
             
             self.move(dt, self.target_coord, speed_multiplier=0.6)
@@ -243,6 +253,15 @@ class Monkey(Prey):
     def draw(self, screen: pygame.Surface, camera):
         if not self.alive:
             return
+        
+        # 1. 화면 좌표를 먼저 계산합니다.
+        sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
+        
+        # 💡 [최적화 핵심] 동물이 화면을 완전히 벗어났다면 아예 연산(스케일, 회전)을 하지 않고 종료합니다.
+        # 여유 공간(margin)을 약 100픽셀 정도 두어 자연스럽게 사라지도록 합니다.
+        margin = 100
+        if not (-margin < sx < camera.screen_w + margin and -margin < sy < camera.screen_h + margin):
+            return
 
         if self.image:
             # 만약 이미지가 정상적으로 로드되었다면 이미지로 그림
@@ -276,9 +295,6 @@ class Monkey(Prey):
         else:
             # 이미지 로드 실패 시 기본 원으로 그리기(부모 클래스)
             super().draw(screen, camera)
-        
-        if self.is_stunned:
-            pygame.draw.circle(screen, (255, 255, 0), (int(sx) + r, int(sy) - r), 3)
 
     def take_damage(self, amount: float, source: str = "unknown", attacker: Optional[Animal] = None):
         """
@@ -361,24 +377,25 @@ class Monkey(Prey):
             self.react_to_predator(dt, predators, game_map)
             self.target_coord = None
         else:
+            # Lee_animals.py - Monkey 클래스 update 메서드 하단 배회 부분
             if not self.on_tree:
-                # 배회하며 안전한 나무 찾아 이동하기
                 self.wander_timer -= dt
                 if self.wander_timer <= 0 or not self.target_coord:
-                    self.wander_timer = random.uniform(2.5, 5.0)
-                    nearby_trees = [t for t in game_map.trees if not t.broken and self.distance_to(t.coordinate) < 350.0]
-                    if nearby_trees and random.random() < 0.5:
+                    self.wander_timer = random.uniform(3.0, 6.0)
+                    nearby_trees = [t for t in game_map.trees if not t.broken and self.distance_to(t.coordinate) < 400.0]
+                    
+                    # 60% 확률로 주변 나무를 목표로, 40% 확률로 자유 배회
+                    if nearby_trees and random.random() < 0.6:
                         self.target_coord = list(random.choice(nearby_trees).coordinate)
                     else:
-                        rx = self.coordinate[0] + random.uniform(-180.0, 180.0)
-                        ry = self.coordinate[1] + random.uniform(-180.0, 180.0)
-                        rx = max(32.0, min(float(game_map.pixel_width - 32), rx))
-                        ry = max(32.0, min(float(game_map.pixel_height - 32), ry))
+                        rx = self.coordinate[0] + random.uniform(-250.0, 250.0)
+                        ry = self.coordinate[1] + random.uniform(-250.0, 250.0)
+                        rx = max(50.0, min(float(game_map.pixel_width - 50.0), rx))
+                        ry = max(50.0, min(float(game_map.pixel_height - 50.0), ry))
                         self.target_coord = [rx, ry]
                 
                 self.move(dt, self.target_coord, speed_multiplier=0.75)
                 
-                # 나무 밑을 지나가다가 낮은 확률로 자동 등반
                 trees = game_map.get_trees_in_canopy(self.coordinate[0], self.coordinate[1])
                 if trees and random.random() < 0.05:
                     self.climb(trees[0])
@@ -445,6 +462,14 @@ class Parrot(FlyingAnimal, Prey):
 
     def draw(self, screen: pygame.Surface, camera):
         if not self.alive:
+            return
+        # 1. 화면 좌표를 먼저 계산합니다.
+        sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
+        
+        # 💡 [최적화 핵심] 동물이 화면을 완전히 벗어났다면 아예 연산(스케일, 회전)을 하지 않고 종료합니다.
+        # 여유 공간(margin)을 약 100픽셀 정도 두어 자연스럽게 사라지도록 합니다.
+        margin = 100
+        if not (-margin < sx < camera.screen_w + margin and -margin < sy < camera.screen_h + margin):
             return
 
         if self.image:
@@ -527,15 +552,16 @@ class Parrot(FlyingAnimal, Prey):
                     self.make_alert_sound(animals)
             self.target_coord = None
         else:
-            # 밀림 상공 위를 평온하게 선회하는 공중 정찰/배회 메커니즘
+            # Lee_animals.py - Parrot 클래스 update 메서드 하단 배회 부분
             self.wander_timer -= dt
             if self.wander_timer <= 0 or not self.target_coord:
                 self.wander_timer = random.uniform(4.0, 7.5)
                 rx = self.coordinate[0] + random.uniform(-400.0, 400.0)
                 ry = self.coordinate[1] + random.uniform(-400.0, 400.0)
                 
-                rx = max(32.0, min(float(game_map.pixel_width - 32), rx))
-                ry = max(32.0, min(float(game_map.pixel_height - 32), ry))
+                # 맵 이탈 완전 봉쇄
+                rx = max(50.0, min(float(game_map.pixel_width - 50.0), rx))
+                ry = max(50.0, min(float(game_map.pixel_height - 50.0), ry))
                 self.target_coord = [rx, ry]
             
             self.move(dt, self.target_coord)

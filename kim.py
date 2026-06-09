@@ -5,6 +5,7 @@ from typing import Tuple, List, Optional
 
 from animal import Animal, Prey, Egg, TILE_SIZE
 from Choi_animals import FlyingAnimal
+import camera
 
 MOSQUITO_IMAGE_CACHE = {}
 
@@ -57,6 +58,15 @@ class Mosquito(FlyingAnimal):
 
     def draw(self, screen: pygame.Surface, camera):
         if not self.alive:
+            return
+        
+        # 1. 화면 좌표를 먼저 계산합니다.
+        sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
+        
+        # 💡 [최적화 핵심] 동물이 화면을 완전히 벗어났다면 아예 연산(스케일, 회전)을 하지 않고 종료합니다.
+        # 여유 공간(margin)을 약 100픽셀 정도 두어 자연스럽게 사라지도록 합니다.
+        margin = 100
+        if not (-margin < sx < camera.screen_w + margin and -margin < sy < camera.screen_h + margin):
             return
 
         if self.image:
@@ -202,8 +212,9 @@ class Mosquito(FlyingAnimal):
                     rx = self.coordinate[0] + random.uniform(-300.0, 300.0)
                     ry = self.coordinate[1] + random.uniform(-300.0, 300.0)
                     
-                    rx = max(32.0, min(float(game_map.pixel_width - 32), rx))
-                    ry = max(32.0, min(float(game_map.pixel_height - 32), ry))
+                    # 맵 밖으로 나가지 않도록 50픽셀 여백을 두고 가두기
+                    rx = max(50.0, min(float(game_map.pixel_width - 50.0), rx))
+                    ry = max(50.0, min(float(game_map.pixel_height - 50.0), ry))
                     self.target_coord = [rx, ry]
                 
                 self.wander_timer = getattr(self, 'wander_timer', 0) - dt
