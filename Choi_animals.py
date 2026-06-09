@@ -860,3 +860,13 @@ class ToxicFrog(Animal):
                     random.random() < 0.02):
                     self.use_stamina(10.0) # 점프 시작 시 1회 소모
                     self.jump_boost_timer = 0.8 # 0.8초 동안 가속
+                
+                # 💡 [핵심 수정] 아래의 이동 및 타겟 초기화 코드가 누락되어 있었습니다!
+                if getattr(self, 'jump_boost_timer', 0) > 0:
+                    self.jump(dt, target=self.target_coord) # 부스트 중일 때는 점프(고속 이동)
+                else:
+                    self.move(dt, target=self.target_coord) # 아닐 때는 일반 이동
+                    
+                # 목적지에 도달하면 타겟을 비워서 다음 랜덤 위치를 찾게 만듭니다
+                if self.distance_to(self.target_coord) < 15.0:
+                    self.target_coord = None
