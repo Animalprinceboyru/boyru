@@ -320,9 +320,12 @@ class Animal:
             return
 
         sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
-        r = int(self.vision_range * camera.zoom)
         
-        # 💡 [최적화 1] 화면 밖으로 완전히 벗어난 시야각은 연산하지 않음
+        # 💡 [수정됨] 실제 vision_range의 50% 크기로만 화면에 렌더링합니다.
+        display_range = self.vision_range * 0.5
+        r = int(display_range * camera.zoom)
+        
+        # 💡 화면 밖으로 완전히 벗어난 시야각은 연산하지 않음
         if not (-r < sx < camera.screen_w + r and -r < sy < camera.screen_h + r):
             return
 
@@ -407,7 +410,7 @@ class Animal:
 
     # ── 체력 / 스태미나 ─────────────────────────
 
-    def take_damage(self, amount: float, source: str = "unknown"):
+    def take_damage(self, amount: float, source: str = "unknown", attacker: Optional["Animal"] = None): # attacker 인자 추가!
         if not self.alive:
             return
         self.hp = max(0, self.hp - amount)

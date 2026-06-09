@@ -39,10 +39,63 @@ class HUD:
         self._draw_minimap(screen, camera, game_map, animals)
         self._draw_controls(screen, weather_system)
 
+        # 💡 좌측 상단에 개체 수 통계를 그리고, 패널이 차지한 높이를 반환받음
+        pop_panel_height = self._draw_population_stats(screen, animals)
+
+        # 💡 클릭해서 보는 상태창이 통계창과 겹치지 않도록 동적 배치 (기본 y좌표 65 + 통계창 높이 + 여백 10)
+        offset_y = 65 + pop_panel_height + 10
         if self.selected_animal is not None:
-            self._draw_animal_panel(screen)
+            self._draw_animal_panel(screen, offset_y)
         elif self.selected_tree is not None:
-            self._draw_tree_panel(screen)
+            self._draw_tree_panel(screen, offset_y)
+
+    # ══════════════════════════════════════════
+    # 개체 수 통계 패널 (신규 추가)
+    # ══════════════════════════════════════════
+    def _draw_population_stats(self, screen, animals) -> int:
+        counts = {}
+        for a in animals:
+            if getattr(a, 'alive', False):
+                species = type(a).__name__
+                counts[species] = counts.get(species, 0) + 1
+                
+        if not counts:
+            return 0
+            
+        start_x = 16
+        start_y = 65
+        
+        # 패널 세로 길이 동적 계산
+        panel_w = 200
+        panel_h = len(counts) * 22 + 35
+        bg = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        bg.fill(COLOR_BG)
+        screen.blit(bg, (start_x, start_y))
+        
+        title = self.font_title.render("생태계 개체 수", True, COLOR_HIGHLIGHT)
+        screen.blit(title, (start_x + 12, start_y + 8))
+        
+        y_offset = start_y + 32
+        bar_max_width = 80
+        
+        for species, count in sorted(counts.items()):
+            label = self.font_small.render(f"{species}: {count}", True, COLOR_TEXT)
+            screen.blit(label, (start_x + 12, y_offset))
+            
+            # 최대 30마리 기준으로 막대그래프 길이 계산 (초과 시 꽉 참)
+            bar_width = min(int((count / 30.0) * bar_max_width), bar_max_width)
+            bar_x = start_x + 100
+            bar_y = y_offset + 3
+            
+            # 막대그래프 배경 (회색) 및 채우기 (초록색)
+            pygame.draw.rect(screen, (80, 80, 80), (bar_x, bar_y, bar_max_width, 8))
+            pygame.draw.rect(screen, COLOR_SUCCESS, (bar_x, bar_y, bar_width, 8))
+            
+            y_offset += 22
+            
+        # 외곽선
+        pygame.draw.rect(screen, COLOR_BORDER, (start_x, start_y, panel_w, panel_h), 2)
+        return panel_h
 
     # ══════════════════════════════════════════
     # 상단 바
@@ -114,9 +167,9 @@ class HUD:
         screen.blit(label, (mm_x + 6, mm_y - 18))
 
     # ══════════════════════════════════════════
-    # 동물 패널
+    # 동물 패널 (오프셋 적용)
     # ══════════════════════════════════════════
-    def _draw_animal_panel(self, screen):
+    def _draw_animal_panel(self, screen, offset_y=65):
         animal = self.selected_animal
         self.info_panel.fill(COLOR_BG)
 
@@ -165,12 +218,12 @@ class HUD:
             self.info_panel.blit(s, (12, 102 + i * 22))
 
         pygame.draw.rect(self.info_panel, COLOR_BORDER, (0, 0, 340, 310), 2)
-        screen.blit(self.info_panel, (16, 65))
+        screen.blit(self.info_panel, (16, offset_y))
 
     # ══════════════════════════════════════════
-    # 나무 패널
+    # 나무 패널 (오프셋 적용)
     # ══════════════════════════════════════════
-    def _draw_tree_panel(self, screen):
+    def _draw_tree_panel(self, screen, offset_y=65):
         tree = self.selected_tree
         self.info_panel.fill(COLOR_BG)
 
@@ -204,7 +257,7 @@ class HUD:
         self.info_panel.blit(guide, (12, 80 + len(rows) * 26 + 10))
 
         pygame.draw.rect(self.info_panel, COLOR_BORDER, (0, 0, 340, 310), 2)
-        screen.blit(self.info_panel, (16, 65))
+        screen.blit(self.info_panel, (16, offset_y))
 
     # ══════════════════════════════════════════
     # 조작법 안내

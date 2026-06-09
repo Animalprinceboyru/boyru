@@ -208,7 +208,8 @@ class Capybara(Prey):
                     if self.distance_to((closest_apple.x, closest_apple.y)) < 25.0:
                         print(f"🍎 [{self.name}]가 사과를 오물오물 먹었습니다!")
                         self.eat(closest_apple.heal_amount)
-                        game_map.apples.remove(closest_apple)
+                        if closest_apple in game_map.apples:
+                            game_map.apples.remove(closest_apple)
                         self.target_coord = None
                     else:
                         self.target_coord = [closest_apple.x, closest_apple.y]
@@ -439,7 +440,8 @@ class Monkey(Prey):
                         if self.distance_to((closest_apple.x, closest_apple.y)) < 25.0:
                             print(f"🍎 [{self.name}]가 사과를 잽싸게 주워 먹었습니다!")
                             self.eat(closest_apple.heal_amount)
-                            game_map.apples.remove(closest_apple)
+                            if closest_apple in game_map.apples:
+                                game_map.apples.remove(closest_apple)
                             self.target_coord = None
                         else:
                             self.target_coord = [closest_apple.x, closest_apple.y]
@@ -644,7 +646,8 @@ class Parrot(FlyingAnimal, Prey):
                     if self.distance_to((closest_apple.x, closest_apple.y)) < 25.0:
                         print(f"🍎 [{self.name}]가 날아와서 사과를 쪼아 먹었습니다!")
                         self.eat(closest_apple.heal_amount)
-                        game_map.apples.remove(closest_apple)
+                        if closest_apple in game_map.apples:
+                            game_map.apples.remove(closest_apple)
                         self.target_coord = None
                     else:
                         self.target_coord = [closest_apple.x, closest_apple.y]

@@ -47,23 +47,18 @@ class FlyingAnimal(Animal):
             # 지상에 있을 때는 모든 데미지를 정상적으로 받음
             super().take_damage(amount, source)
     def attack(self, target: Optional[Animal] = None, base_damage: float = 15.0):
-        """날면서 다른 대상을 공격할 때, 나의 비행 속도에 비례하여 타겟에게 더 큰 피해를 입힙니다."""
         if target and target.alive:
             if self.is_flying:
-                # 💡 [핵심] 내가 날고 있을 때: 상대가 받는 대미지 = 기본 대미지 + 내 비행 속도의 15%
                 extra_damage = self.flying_speed * 0.15
                 final_damage = base_damage + extra_damage
-                
-                print(f"🦅 {self.name}이(가) 공중에서 고속({self.flying_speed:.1f})으로 강하하며 "
-                      f"{target.name}에게 가속도가 붙은 강력한 타격({final_damage:.1f})을 입힙니다!")
+                print(f"🦅 {self.name}이(가) 공중에서 강하하며 타격({final_damage:.1f})을 입힙니다!")
                 target.take_damage(final_damage, source="flying_attack", attacker=self)
             else:
-                # 지상에 있을 때: 속도 가중치 없이 기본 데미지만 가함
-                print(f"🦅 {self.name}이(가) 지상에서 부리로 {target.name}을(를) 쪼아 공격({base_damage:.1f})합니다!")
+                print(f"🦅 {self.name}이(가) 지상에서 쪼아 공격({base_damage:.1f})합니다!")
                 target.take_damage(base_damage, source="peck_attack", attacker=self)
-        else:
-            # 타겟이 지정되지 않았을 경우를 대비한 예외 처리
-            super().attack()
+        elif target is not None:
+            # 타겟은 존재하지만 죽었을 경우 등에 대비하여 정상적으로 인자 전달
+            super().attack(target, base_damage)
     
     def make_child(self): 
         breed_cost = 20.0
@@ -875,7 +870,8 @@ class ToxicFrog(Animal):
                         if self.distance_to((closest_apple.x, closest_apple.y)) < 25.0:
                             print(f"🍎 [{self.name}]가 긴 혀로 사과를 날름 삼켰습니다!")
                             self.eat(closest_apple.heal_amount)
-                            game_map.apples.remove(closest_apple)
+                            if closest_apple in game_map.apples:
+                                game_map.apples.remove(closest_apple)
                             self.target_coord = None
                         else:
                             self.target_coord = [closest_apple.x, closest_apple.y]

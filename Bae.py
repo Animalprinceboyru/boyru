@@ -73,7 +73,7 @@ class Anaconda(Predator):
     _STATE_RUSHING = "rushing"
     _STATE_CHASING = "chasing"
 
-    HUNT_TARGETS     = {"Capybara", "Monkey", "Parrot", "ToxicFrog"}
+    HUNT_TARGETS     = {"Capybara", "Monkey", "Parrot", "ToxicFrog","Rhino"}
     HATCH_TIME       = 90.0    # 아나콘다 알 부화 시간 (초)
     WATER_PREY_RANGE = 160.0   # 피식자 주변 이 거리 이내에 물이 있어야 타겟으로 삼음
 

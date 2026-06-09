@@ -9,7 +9,6 @@ import camera
 
 MOSQUITO_IMAGE_CACHE = {}
 
-
 class Mosquito(FlyingAnimal):
     """
     모기 클래스 - FlyingAnimal을 상속받음
@@ -21,16 +20,17 @@ class Mosquito(FlyingAnimal):
     minimap_color = (255, 255, 255)
 
     def __init__(self, name: str, coordinate: Tuple[float, float], **kwargs):
-        super().__init__(name, coordinate, flying_speed=150.0, **kwargs)
-        self.max_hp = 20
-        self.hp = 20
-        self.max_speed = 50.0
-        self.max_stamina = 40.0
-        self.stamina = 40.0
+        # 💡 [스탯 밸런싱] 비행 속도는 매우 빠르지만 체력과 딜량은 낮음
+        super().__init__(name, coordinate, flying_speed=180.0, **kwargs)
+        self.max_hp = 30
+        self.hp = 30
+        self.max_speed = 60.0
+        self.max_stamina = 50.0
+        self.stamina = 50.0
         
-        self.bite_damage = 8.0
-        self.bite_poison_dps = 1.5
-        self.bite_poison_duration = 4.0
+        self.bite_damage = 5.0        # 데미지 하향 (성가신 역할)
+        self.bite_poison_dps = 2.0    # 독 데미지 소폭 상승
+        self.bite_poison_duration = 5.0
         self.bite_cooldown = 0.0
         self.bite_range = 25.0
         self.bite_success_rate = 0.7
@@ -60,19 +60,14 @@ class Mosquito(FlyingAnimal):
         if not self.alive:
             return
         
-        # 1. 화면 좌표를 먼저 계산합니다.
         sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
-        
-        # 💡 [최적화 핵심] 동물이 화면을 완전히 벗어났다면 아예 연산(스케일, 회전)을 하지 않고 종료합니다.
-        # 여유 공간(margin)을 약 100픽셀 정도 두어 자연스럽게 사라지도록 합니다.
         margin = 100
         if not (-margin < sx < camera.screen_w + margin and -margin < sy < camera.screen_h + margin):
             return
 
+        offset_y = -12 if self.is_flying else 0
+
         if self.image:
-            sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
-            offset_y = -12 if self.is_flying else 0
-            
             new_w = int(self.image.get_width() * camera.zoom)
             new_h = int(self.image.get_height() * camera.zoom)
             
@@ -95,7 +90,20 @@ class Mosquito(FlyingAnimal):
             if self.is_poisoned:
                 pygame.draw.circle(screen, (100, 255, 100), (int(sx) + 3, int(sy) + offset_y - 5), 2)
         else:
-            super().draw(screen, camera)
+            # 💡 [메인 맵 렌더링 수정] 이미지가 없을 때 부모의 거대한 원형 대신, 작고 흰색인 원으로 표시
+            pygame.draw.circle(screen, (255, 255, 255), (int(sx), int(sy) + offset_y), max(2, int(4 * camera.zoom)))
+            
+            # 체력바는 동일하게 표시
+            hp_ratio = self.hp / self.max_hp
+            bar_w = int(12 * camera.zoom)
+            bar_h = int(2 * camera.zoom)
+            bx = int(sx) - bar_w // 2
+            by = int(sy) + offset_y - int(8 * camera.zoom) - 6
+            
+            pygame.draw.rect(screen, (80, 0, 0), (bx, by, bar_w, bar_h))
+            pygame.draw.rect(screen, (100, 220, 120), (bx, by, int(bar_w * hp_ratio), bar_h))
+            if self.is_poisoned:
+                pygame.draw.circle(screen, (100, 255, 100), (int(sx) + 3, int(sy) + offset_y - 5), 2)
 
     def make_child(self):
         breed_cost = 8.0
