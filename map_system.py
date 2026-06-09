@@ -28,53 +28,63 @@ TILE_SIZE = 32
 # 🍎 [추가] 맵 전용 이미지 캐시 딕셔너리
 MAP_IMAGE_CACHE = {}
 
+# 🍎 사과 클래스 (클래스 레벨 캐싱 완벽 적용 버전)
 class Apple:
+    # 💡 [핵심 최적화] 모든 사과 객체가 메모리를 공유하는 클래스 변수들
+    _shared_img_cache = {} 
+    _base_image = None
+    _image_loaded = False
+
     def __init__(self, x: float, y: float, heal_amount: float = 30.0):
         self.x = x
         self.y = y
         self.heal_amount = heal_amount
         self.size = 15.0  # 사과 기본 크기
 
-        # 💡 다른 동물들처럼 최초 1회만 이미지를 캐시에 로드합니다.
-        self.image_path = "apple.png"
-        self.image = None
-
-        if self.image_path not in MAP_IMAGE_CACHE:
+        # 최초 1회만 디스크에서 이미지를 불러와 클래스 변수에 저장합니다.
+        # (사과가 80개라도 파일 로드는 딱 1번만 실행됨)
+        if not Apple._image_loaded:
             try:
-                loaded_img = pygame.image.load(self.image_path).convert_alpha()
-                MAP_IMAGE_CACHE[self.image_path] = loaded_img
+                loaded_img = pygame.image.load("apple.png").convert_alpha()
+                orig_w, orig_h = loaded_img.get_size()
+                target_max_size = int(self.size * 2.5)
+                scale_factor = target_max_size / max(orig_w, orig_h)
+                new_w = int(orig_w * scale_factor)
+                new_h = int(orig_h * scale_factor)
+                Apple._base_image = pygame.transform.scale(loaded_img, (new_w, new_h))
             except Exception as e:
                 print(f"⚠️ 사과 이미지 로드 실패: {e}")
-                MAP_IMAGE_CACHE[self.image_path] = None
-                
-        orig_img = MAP_IMAGE_CACHE[self.image_path]
-        if orig_img is not None:
-            orig_w, orig_h = orig_img.get_size()
-            target_max_size = int(self.size * 2.5)
-            scale_factor = target_max_size / max(orig_w, orig_h)
-            new_w = int(orig_w * scale_factor)
-            new_h = int(orig_h * scale_factor)
-            self.image = pygame.transform.scale(orig_img, (new_w, new_h))
+                Apple._base_image = None
+            Apple._image_loaded = True
 
-    # 💡 다른 동물들처럼 자체 렌더링(draw) 함수를 가집니다.
+        # 개별 사과들은 클래스에서 로드한 원본 이미지를 참조만 합니다.
+        self.image = Apple._base_image
+
     def draw(self, screen: pygame.Surface, camera_x: float, camera_y: float, zoom: float, screen_w: int, screen_h: int):
         sx = (self.x - camera_x) * zoom
         sy = (self.y - camera_y) * zoom
         
-        # 최적화: 화면 밖이면 렌더링 안 함
+        # 최적화: 화면 밖이면 렌더링 연산 자체를 건너뜀
         margin = 50
         if not (-margin < sx < screen_w + margin and -margin < sy < screen_h + margin):
             return
 
         if self.image:
-            # 줌 비율에 맞춰 매 프레임 스케일링 (동물들과 완벽히 동일한 방식)
-            new_w = int(self.image.get_width() * zoom)
-            new_h = int(self.image.get_height() * zoom)
-            scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
+            # 💡 [핵심 최적화] 줌(zoom) 레벨별 이미지를 클래스 전체 사과가 공유!
+            zoom_key = round(zoom, 2)
+            
+            if zoom_key not in Apple._shared_img_cache:
+                new_w = int(self.image.get_width() * zoom)
+                new_h = int(self.image.get_height() * zoom)
+                # 새로운 줌 레벨이 발견되면 딱 한 번만 스케일링해서 공용 캐시에 저장
+                Apple._shared_img_cache[zoom_key] = pygame.transform.scale(self.image, (new_w, new_h))
+                
+            # 매 프레임 변형 연산 없이 공용 캐시에서 쏙쏙 꺼내서 화면에 출력!
+            scaled_image = Apple._shared_img_cache[zoom_key]
             rect = scaled_image.get_rect(center=(int(sx), int(sy)))
             screen.blit(scaled_image, rect)
         else:
-            # 이미지 로드 실패 시 폴백 (빨간 원)
+            # 이미지 로드 실패 시 그릴 기본 도형 (폴백)
             pygame.draw.circle(screen, (220, 40, 40), (int(sx), int(sy)), max(1, int(5 * zoom)))
             pygame.draw.circle(screen, (40, 200, 40), (int(sx - 2*zoom), int(sy - 3*zoom)), max(1, int(2 * zoom)))
 
@@ -579,84 +589,118 @@ class GameMap:
     # Y-Sorting (2.5D 정렬)을 위한 동적 나무 렌더링
     # ══════════════════════════════════════════
     def draw_tree_over_animal(self, screen: pygame.Surface, camera_x: float, camera_y: float, zoom: float, tree: Tree):
-        """줌이 적용된 화면에서 나무를 특정 동물의 위에 덧그려 완벽히 가려지게 만듭니다."""
-        def tr(x, y, w, h):
-            return (int((x - camera_x) * zoom), int((y - camera_y) * zoom), 
-                    max(1, int(w * zoom)), max(1, int(h * zoom)))
-
-        px, py = tree.pixel_pos
-        w_size = tree.width_tiles
-        h_size = tree.height_tiles
-
+        """줌이 적용된 화면에서 나무를 특정 동물의 위에 덧그려 완벽히 가려지게 만듭니다 (캐싱 최적화 적용)."""
+        
+        # 부러진 나무는 형태가 단순하므로 캐싱 없이 바로 그립니다
         if tree.broken:
-            pygame.draw.rect(screen, (55, 35, 18),
-                             tr(px - TILE_SIZE, py, TILE_SIZE * w_size, TILE_SIZE // 2))
+            px, py = tree.pixel_pos
+            w_size = tree.width_tiles
+            tr_x = int((px - TILE_SIZE - camera_x) * zoom)
+            tr_y = int((py - camera_y) * zoom)
+            tr_w = max(1, int(TILE_SIZE * w_size * zoom))
+            tr_h = max(1, int((TILE_SIZE // 2) * zoom))
+            pygame.draw.rect(screen, (55, 35, 18), (tr_x, tr_y, tr_w, tr_h))
             return
 
-        trunk_h  = int(TILE_SIZE * (1.5 + h_size * 0.3))
-        trunk_w  = int(TILE_SIZE * (0.3 + w_size * 0.1))
-        canopy_w = int(TILE_SIZE * (1.8 + w_size * 0.5))
-        layers   = max(3, w_size + h_size - 1)
+        # 💡 [핵심 최적화] 원본 크기(zoom=1.0)의 나무를 딱 한 번만 그려서 캐싱합니다!
+        if not hasattr(tree, '_base_image'):
+            w_size = tree.width_tiles
+            h_size = tree.height_tiles
+            
+            trunk_h  = int(TILE_SIZE * (1.5 + h_size * 0.3))
+            trunk_w  = int(TILE_SIZE * (0.3 + w_size * 0.1))
+            canopy_w = int(TILE_SIZE * (1.8 + w_size * 0.5))
+            layers   = max(3, w_size + h_size - 1)
 
-        if tree.tree_type == "tall":
-            trunk_h  = int(trunk_h  * 1.35)
-            canopy_w = int(canopy_w * 0.85)
-        elif tree.tree_type == "wide":
-            trunk_h  = int(trunk_h  * 0.85)
-            canopy_w = int(canopy_w * 1.30)
+            if tree.tree_type == "tall":
+                trunk_h  = int(trunk_h  * 1.35)
+                canopy_w = int(canopy_w * 0.85)
+            elif tree.tree_type == "wide":
+                trunk_h  = int(trunk_h  * 0.85)
+                canopy_w = int(canopy_w * 1.30)
+                
+            canopy_base_y = -trunk_h
+            
+            # 나무가 그려질 투명한 도화지(Surface) 생성
+            surf_w = int(canopy_w * 1.5)
+            surf_h = int(trunk_h + layers * (8 + max(w_size, h_size)) + TILE_SIZE * 2)
+            base_surf = pygame.Surface((surf_w, surf_h), pygame.SRCALPHA)
+            base_surf.fill((0, 0, 0, 0))
+            
+            # 도화지 내부의 중심 좌표 설정
+            cx = surf_w // 2
+            cy = surf_h - TILE_SIZE
+            
+            # --- 복잡한 사각형들을 화면이 아닌 base_surf(도화지)에 딱 한 번만 그립니다 ---
+            trunk_colors = { "normal": (50, 32, 18), "tall": (42, 26, 14), "wide": (58, 38, 22) }
+            tc = trunk_colors.get(tree.tree_type, (50, 32, 18))
+            tx = cx - trunk_w // 2
+            ty_trunk = cy - trunk_h + TILE_SIZE
+            
+            pygame.draw.rect(base_surf, tc, (tx, ty_trunk, trunk_w, trunk_h))
+            pygame.draw.rect(base_surf, tuple(min(255, c + 10) for c in tc), (tx + 2, ty_trunk + 4, max(2, trunk_w//5), trunk_h - 8))
+            pygame.draw.rect(base_surf, tuple(max(0, c - 14) for c in tc), (tx + trunk_w - max(3, trunk_w//5), ty_trunk, max(3, trunk_w//5), trunk_h))
+            
+            vine_count = max(1, (w_size + h_size) // 2 - 1)
+            rng = tree.tile_x * 17 + tree.tile_y * 23
+            for i in range(vine_count):
+                vx = cx + ((rng + i * 7) % canopy_w) - canopy_w // 2
+                vl = TILE_SIZE + ((rng + i * 11) % TILE_SIZE)
+                pygame.draw.rect(base_surf, (20, 50, 20), (vx, cy + canopy_base_y, 2, vl))
+                for ly in range(int(cy + canopy_base_y) + 8, int(cy + canopy_base_y + vl), 12):
+                    pygame.draw.rect(base_surf, (25, 60, 25), (vx - 2, ly, 6, 4))
+                    
+            canopy_palettes = {
+                "normal": [(12,40,15),(18,55,20),(28,75,28),(40,95,35)],
+                "tall":   [(10,35,12),(15,50,18),(25,70,25),(35,85,30),(48,105,38)],
+                "wide":   [(15,45,18),(22,60,22),(32,80,30),(45,100,40),(55,120,45)],
+            }
+            palette = canopy_palettes.get(tree.tree_type, canopy_palettes["normal"])
+            
+            for i in range(layers):
+                cw    = int(canopy_w * (1.0 - i * 0.10))
+                ch    = int(cw * 0.65)
+                cx_rect = cx - cw // 2
+                cy_rect = cy + canopy_base_y - i * (8 + max(w_size, h_size))
+                color = palette[min(i, len(palette) - 1)]
+                pygame.draw.rect(base_surf, color, (cx_rect, cy_rect, cw, ch))
+                
+            top_cw = int(canopy_w * (1.0 - (layers-1) * 0.10))
+            top_cy = cy + canopy_base_y - (layers-1) * (8 + max(w_size, h_size))
+            hl     = tuple(min(255, c + 18) for c in palette[-1])
+            pygame.draw.rect(base_surf, hl, (cx - top_cw//2 + 3, top_cy, top_cw - 6, 3))
+            
+            if tree.has_nest:
+                nest_w = TILE_SIZE + (max(w_size, h_size) - 2) * 6
+                nest_h = TILE_SIZE // 2 + (max(w_size, h_size) - 2) * 3
+                nx     = cx + canopy_w // 4
+                ny     = cy + canopy_base_y + TILE_SIZE // 3
+                pygame.draw.rect(base_surf, (85, 60, 25), (nx, ny, nest_w, nest_h))
+                pygame.draw.rect(base_surf, (115, 80, 35), (nx+2, ny+2, nest_w-4, nest_h-4))
+                if tree.nest_occupied:
+                    pygame.draw.rect(base_surf, (220, 210, 190), (nx + nest_w//4, ny+2, 8, 6))
+                    
+            # 그려진 원본 이미지를 객체에 영구 저장
+            tree._base_image = base_surf
+            tree._img_cache = {}
+            tree._base_cx = cx
+            tree._base_cy = cy
 
-        canopy_base_y = py - trunk_h
-
-        trunk_colors = {
-            "normal": (50, 32, 18),
-            "tall":   (42, 26, 14),
-            "wide":   (58, 38, 22),
-        }
-        tc = trunk_colors.get(tree.tree_type, (50, 32, 18))
-        tx = px - trunk_w // 2
-        ty_trunk = py - trunk_h + TILE_SIZE
-
-        pygame.draw.rect(screen, tc, tr(tx, ty_trunk, trunk_w, trunk_h))
-        pygame.draw.rect(screen, tuple(min(255, c + 10) for c in tc),
-                         tr(tx + 2, ty_trunk + 4, max(2, trunk_w//5), trunk_h - 8))
-        pygame.draw.rect(screen, tuple(max(0, c - 14) for c in tc),
-                         tr(tx + trunk_w - max(3, trunk_w//5), ty_trunk, max(3, trunk_w//5), trunk_h))
-
-        vine_count = max(1, (w_size + h_size) // 2 - 1)
-        rng = tree.tile_x * 17 + tree.tile_y * 23
-        for i in range(vine_count):
-            vx = px + ((rng + i * 7) % canopy_w) - canopy_w // 2
-            vl = TILE_SIZE + ((rng + i * 11) % TILE_SIZE)
-            pygame.draw.rect(screen, (20, 50, 20), tr(vx, canopy_base_y, 2, vl))
-            for ly in range(int(canopy_base_y) + 8, int(canopy_base_y + vl), 12):
-                pygame.draw.rect(screen, (25, 60, 25), tr(vx - 2, ly, 6, 4))
-
-        canopy_palettes = {
-            "normal": [(12,40,15),(18,55,20),(28,75,28),(40,95,35)],
-            "tall":   [(10,35,12),(15,50,18),(25,70,25),(35,85,30),(48,105,38)],
-            "wide":   [(15,45,18),(22,60,22),(32,80,30),(45,100,40),(55,120,45)],
-        }
-        palette = canopy_palettes.get(tree.tree_type, canopy_palettes["normal"])
-
-        for i in range(layers):
-            cw    = int(canopy_w * (1.0 - i * 0.10))
-            ch    = int(cw * 0.65)
-            cx    = px - cw // 2
-            cy    = canopy_base_y - i * (8 + max(w_size, h_size))
-            color = palette[min(i, len(palette) - 1)]
-            pygame.draw.rect(screen, color, tr(cx, cy, cw, ch))
-
-        top_cw = int(canopy_w * (1.0 - (layers-1) * 0.10))
-        top_cy = canopy_base_y - (layers-1) * (8 + max(w_size, h_size))
-        hl     = tuple(min(255, c + 18) for c in palette[-1])
-        pygame.draw.rect(screen, hl, tr(px - top_cw//2 + 3, top_cy, top_cw - 6, 3))
-
-        if tree.has_nest:
-            nest_w = TILE_SIZE + (max(w_size, h_size) - 2) * 6
-            nest_h = TILE_SIZE // 2 + (max(w_size, h_size) - 2) * 3
-            nx     = px + canopy_w // 4
-            ny     = canopy_base_y + TILE_SIZE // 3
-            pygame.draw.rect(screen, (85, 60, 25), tr(nx, ny, nest_w, nest_h))
-            pygame.draw.rect(screen, (115, 80, 35), tr(nx+2, ny+2, nest_w-4, nest_h-4))
-            if tree.nest_occupied:
-                pygame.draw.rect(screen, (220, 210, 190), tr(nx + nest_w//4, ny+2, 8, 6))
+        # 💡 [줌 스케일링 캐시] 현재 줌 레벨에 맞는 이미지를 꺼냅니다
+        zoom_key = round(zoom, 2)
+        if zoom_key not in tree._img_cache:
+            new_w = int(tree._base_image.get_width() * zoom)
+            new_h = int(tree._base_image.get_height() * zoom)
+            tree._img_cache[zoom_key] = pygame.transform.scale(tree._base_image, (new_w, new_h))
+        
+        scaled_tree = tree._img_cache[zoom_key]
+        
+        # 화면의 최종 좌표를 계산하여 단 한 번의 blit으로 도장 찍기!
+        px, py = tree.pixel_pos
+        screen_x = int((px - camera_x) * zoom)
+        screen_y = int((py - camera_y) * zoom)
+        
+        topleft_x = screen_x - int(tree._base_cx * zoom)
+        topleft_y = screen_y - int(tree._base_cy * zoom)
+        
+        screen.blit(scaled_tree, (topleft_x, topleft_y))

@@ -135,14 +135,22 @@ class Egg:
             return
 
         if self.image:
-            # 줌 비율에 맞춰 스케일링
-            new_w = int(self.image.get_width() * camera.zoom)
-            new_h = int(self.image.get_height() * camera.zoom)
-            scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
+            if not hasattr(self.__class__, '_shared_img_cache'):
+                self.__class__._shared_img_cache = {}
+                
+            zoom_key = round(camera.zoom, 2) # 혹은 camera.zoom 대신 zoom (함수 파라미터에 맞게)
+            
+            if zoom_key not in self.__class__._shared_img_cache:
+                new_w = int(self.image.get_width() * zoom_key) # Apple은 self.image.get_width() * zoom
+                new_h = int(self.image.get_height() * zoom_key)
+                self.__class__._shared_img_cache[zoom_key] = pygame.transform.scale(self.image, (new_w, new_h))
+                
+            scaled_image = self.__class__._shared_img_cache[zoom_key]
             rect = scaled_image.get_rect(center=(int(sx), int(sy)))
             screen.blit(scaled_image, rect)
             
             # 진행 바 위치 설정 (이미지 크기에 맞춤)
+            new_h = scaled_image.get_height()
             bw = 15 * camera.zoom
             bh = 3 * camera.zoom
             bx = sx - bw / 2
