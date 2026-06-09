@@ -108,7 +108,7 @@ class Capybara(Prey):
             self.stress_level = min(100.0, self.stress_level + 12.0 * dt)
             closest = min(predators, key=lambda p: self.distance_to(p))
             if getattr(self, 'environment_status', '') == 'water':
-                if random.random()<0.3: self.flee_from(closest, dt)
+                if random.random()<0.1: self.flee_from(closest, dt)
             else: self.flee_to_water(game_map, dt, closest)
             self.target_coord = None
         else:

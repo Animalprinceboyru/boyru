@@ -150,26 +150,27 @@ class Mosquito(FlyingAnimal):
         if not self.alive or self.is_stunned:
             return
         
-        # 💡 [핵심 수정] 독개구리 탐지 및 공격 로직 삭제하여 자살 행위 방지!
         prey_candidates = [
             a for a in animals
             if a is not self and a.alive
-            and a.__class__.__name__ != "ToxicFrog" # 독개구리에게는 일절 다가가지 않음!
+            and a.__class__.__name__ != "ToxicFrog" 
             and a.__class__.__name__ != "Mosquito"
             and self.distance_to(a) <= self.vision_range
             and self.can_see(a, game_map)
         ]
         
         if prey_candidates:
-            closest_prey = min(prey_candidates, key=lambda p: self.distance_to(p))
+            # 💡 앵무새를 우선 타겟팅하도록 거리 가중치(0.4배로 더 가깝게 느낌) 적용
+            closest_prey = min(prey_candidates, key=lambda p: self.distance_to(p) * (0.4 if p.__class__.__name__ == "Parrot" else 1.0))
             
             if self.distance_to(closest_prey) <= self.bite_range:
-                if random.random() < 0.12:
+                # 💡 앵무새일 경우 흡혈 확률을 무려 40%로 상승시켜 집중 공격
+                bite_chance = 0.40 if closest_prey.__class__.__name__ == "Parrot" else 0.12
+                if random.random() < bite_chance:
                     self.bite(closest_prey)
             else:
                 self.move(dt, closest_prey.coordinate, speed_multiplier=1.2)
         else:
-            # 💡 [추가] 집 찾기 로직
             if self.try_return_home(dt):
                 self.target_coord = None
                 return
