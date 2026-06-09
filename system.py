@@ -234,22 +234,54 @@ def main():
 
         # ── 렌더링 ──
         screen.fill((15, 30, 15))
+        
+        # [레이어 1] 맵 (바닥 및 기본 나무들)
         game_map.draw(screen, camera.x, camera.y,
                       SCREEN_WIDTH, SCREEN_HEIGHT, camera.zoom)
         
-        # ✨ [추가] 필드에 놓인 알 그리기
-        for egg in eggs:
-            egg.draw(screen, camera)
-
-        for animal in animals:
-            if hasattr(animal, 'draw'):
-                animal.draw(screen, camera)
+        # [레이어 2 & 3] 지상 동물과 나무의 동적 Y좌표 정렬
+        render_queue = []
         
-        # system.py의 하단 렌더링 파트를 찾아 아래처럼 수정합니다.
+        # 1. 알 수집
+        for egg in eggs:
+            render_queue.append(('entity', egg.coordinate[1], egg))
+            
+        # 2. 지상 동물 수집 (나무 위에 있거나 날고 있는 동물 제외)
+        for animal in animals:
+            if hasattr(animal, 'coordinate') and not getattr(animal, 'on_tree', False) and not getattr(animal, 'is_flying', False):
+                render_queue.append(('entity', animal.coordinate[1], animal))
+                
+        # 3. 화면 안의 '모든' 나무 수집 (중심점 겹침 꼼수 제거)
+        # 카메라 영역에 여유 공간을 주어 화면 밖에서 튀어나오는 나뭇잎까지 캐치합니다.
+        view_rect = pygame.Rect(
+            camera.x - 200, camera.y - 300,
+            (SCREEN_WIDTH / camera.zoom) + 400, (SCREEN_HEIGHT / camera.zoom) + 600
+        )
+        for tree in game_map.trees:
+            px, py = tree.pixel_pos
+            if view_rect.collidepoint(px, py):
+                render_queue.append(('tree', py, tree))
+            
+        # 4. Y좌표를 기준으로 위에서 아래 순서로(오름차순) 정렬
+        render_queue.sort(key=lambda item: item[1])
+        
+        # 5. 정렬된 순서대로 화면에 출력 (자연스러운 2.5D 원근감)
+        for item_type, y_pos, obj in render_queue:
+            if item_type == 'entity':
+                if hasattr(obj, 'draw'):
+                    obj.draw(screen, camera)
+            elif item_type == 'tree':
+                game_map.draw_tree_over_animal(screen, camera.x, camera.y, camera.zoom, obj)
+                
+        # [레이어 4] 최상단 레이어 (공중을 날거나 나무 위에 있는 동물)
+        for animal in animals:
+            if getattr(animal, 'on_tree', False) or getattr(animal, 'is_flying', False):
+                if hasattr(animal, 'draw'):
+                    animal.draw(screen, camera)
+        
         if show_fov:
             for animal in animals:
                 if hasattr(animal, 'draw_fov_debug'):
-                    # 💡 [수정] color 매개변수를 지워서 animal.py에서 정의한 고유 색상이 나오게 합니다.
                     animal.draw_fov_debug(screen, camera, alpha=80)
 
         weather.draw(screen)

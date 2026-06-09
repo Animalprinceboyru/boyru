@@ -60,7 +60,6 @@ class Anaconda(Predator):
           기습 성공 → choke + eat
           기습 실패 → chasing(추격)
       [육지] 최대속도·가속도·스태미나 감소 패널티
-             추격 중이 아니면 물가로 복귀하려 배회
     """
 
     SPECIES_VISION_RANGE: float = 200.0
@@ -224,6 +223,7 @@ class Anaconda(Predator):
 
     # ── 배회 ────────────────────────────────────
 
+    # Bae.py - Anaconda 클래스의 _wander 메서드 교체
     def _wander(self, dt: float, game_map):
         self._wander_timer -= dt
         if (self._wander_target is None or 
@@ -393,11 +393,7 @@ class Anaconda(Predator):
     # ── 업데이트 ─────────────────────────────────
 
     def update(self, dt: float, game_map, weather, animals: List[Animal]):
-        # 💡 Predator의 기본 자동 사냥 로직을 건너뛰기 위해
-        #    super().update()(=Predator.update) 대신 Animal.update를 직접 호출한다.
-        #    이렇게 하면 나이/갈증/스태미나 등 공통 처리는 그대로 돌면서
-        #    포식 행동은 아래 매복 FSM이 단독으로 제어한다.
-        Animal.update(self, dt, game_map, weather, animals)
+        super().update(dt, game_map, weather, animals)
         if not self.alive:
             return
 
@@ -405,20 +401,15 @@ class Anaconda(Predator):
         self._apply_land_stamina_drain(dt)
 
         # 물속일 때만 매복 FSM 작동
-        # 육지에서는 은신 해제, 추격 중이면 계속 추격, 아니면 물가로 복귀하려 배회
+        # 육지에서는 은신 해제, 추격 중이면 계속 추격
         if self.environment_status == "water":
+            self.stop_hunt()   # Predator 기본 사냥 비활성화
             self._update_behavior(dt, animals, game_map)
         else:
             if self.hidden:
                 self.stop_hide()
             if self._state == self._STATE_CHASING:
                 self._update_behavior(dt, animals, game_map)
-            else:
-                # 육지 + 비추격: 멈춰 있지 않도록 배회(배회 목표가 물 쪽으로 잡혀 자연스럽게 물로 복귀)
-                self._wander(dt, game_map)
-                # 물속에서 잡았던 매복 상태(waiting/rushing)는 초기화
-                if self._state != self._STATE_IDLE:
-                    self._set_state(self._STATE_IDLE)
 
     # ── 번식 ────────────────────────────────────
 
@@ -628,6 +619,7 @@ class Crocodile(Predator):
 
     # ── 배회 ────────────────────────────────────
 
+    # Bae.py - Crocodile 클래스의 _wander 메서드 교체
     def _wander(self, dt, game_map):
         self._wander_timer -= dt
         if (self._wander_target is None or 
@@ -754,9 +746,7 @@ class Crocodile(Predator):
     # ── 업데이트 ─────────────────────────────────
 
     def update(self, dt, game_map, weather, animals):
-        # 💡 Predator의 기본 자동 사냥 로직을 건너뛰기 위해
-        #    super().update()(=Predator.update) 대신 Animal.update를 직접 호출한다.
-        Animal.update(self, dt, game_map, weather, animals)
+        super().update(dt, game_map, weather, animals)
         if not self.alive:
             return
 
@@ -766,6 +756,7 @@ class Crocodile(Predator):
                 if self.try_form_couple(a):
                     break
 
+        self.stop_hunt()
         self._apply_land_drain(dt)
         if self.environment_status != "water" and self._state == self._LURKING:
             self._set_state(self._IDLE)
