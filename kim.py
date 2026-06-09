@@ -20,7 +20,6 @@ class Mosquito(FlyingAnimal):
     minimap_color = (255, 255, 255)
 
     def __init__(self, name: str, coordinate: Tuple[float, float], **kwargs):
-        # 💡 [스탯 밸런싱] 비행 속도는 매우 빠르지만 체력과 딜량은 낮음
         super().__init__(name, coordinate, flying_speed=180.0, **kwargs)
         self.max_hp = 30
         self.hp = 30
@@ -28,13 +27,12 @@ class Mosquito(FlyingAnimal):
         self.max_stamina = 50.0
         self.stamina = 50.0
         
-        self.bite_damage = 5.0        # 데미지 하향 (성가신 역할)
-        self.bite_poison_dps = 2.0    # 독 데미지 소폭 상승
+        self.bite_damage = 5.0        
+        self.bite_poison_dps = 2.0    
         self.bite_poison_duration = 5.0
         self.bite_cooldown = 0.0
         self.bite_range = 25.0
         self.bite_success_rate = 0.7
-        self.frog_fear_range = 250.0
         
         self.image_path = "mosquito.png"
         self.image = None
@@ -90,10 +88,8 @@ class Mosquito(FlyingAnimal):
             if self.is_poisoned:
                 pygame.draw.circle(screen, (100, 255, 100), (int(sx) + 3, int(sy) + offset_y - 5), 2)
         else:
-            # 💡 [메인 맵 렌더링 수정] 이미지가 없을 때 부모의 거대한 원형 대신, 작고 흰색인 원으로 표시
             pygame.draw.circle(screen, (255, 255, 255), (int(sx), int(sy) + offset_y), max(2, int(4 * camera.zoom)))
             
-            # 체력바는 동일하게 표시
             hp_ratio = self.hp / self.max_hp
             bar_w = int(12 * camera.zoom)
             bar_h = int(2 * camera.zoom)
@@ -146,91 +142,53 @@ class Mosquito(FlyingAnimal):
         
         return False
 
-    def try_bite_frog(self, frog) -> bool:
-        if not frog.alive or self.distance_to(frog) > self.bite_range:
-            return False
-        
-        if random.random() < self.bite_success_rate:
-            print(f"🦟🐸 [{self.name}]이(가) 독개구리 {frog.name}을(를) 물었습니다!")
-            self.heal(8.0)
-            self.eat(10.0)
-            frog.apply_poison(duration=2.0, dps=0.5, speed_multiplier=0.9)
-            self.take_damage(6.0, source="frog_poison", attacker=frog)
-            return True
-        else:
-            print(f"🦟🐸 [{self.name}]이(가) 독개구리 {frog.name}을(를) 물려고 했지만 실패했습니다!")
-            self.take_damage(4.0, source="frog_defense", attacker=frog)
-            return False
-
-    def detect_toxic_frogs(self, animals: List[Animal]) -> List[Animal]:
-        return [
-            a for a in animals
-            if a.__class__.__name__ == "ToxicFrog" and a.alive
-            and self.distance_to(a) <= self.frog_fear_range
-        ]
-
     def update(self, dt: float, game_map, weather, animals: List[Animal]):
         if self.bite_cooldown > 0:
             self.bite_cooldown -= dt
         
         FlyingAnimal.update(self, dt, game_map, weather, animals)
-        
         if not self.alive or self.is_stunned:
             return
         
-        frogs = self.detect_toxic_frogs(animals)
-        if frogs:
-            closest_frog = min(frogs, key=lambda f: self.distance_to(f))
-            dist_to_frog = self.distance_to(closest_frog)
+        # 💡 [핵심 수정] 독개구리 탐지 및 공격 로직 삭제하여 자살 행위 방지!
+        prey_candidates = [
+            a for a in animals
+            if a is not self and a.alive
+            and a.__class__.__name__ != "ToxicFrog" # 독개구리에게는 일절 다가가지 않음!
+            and a.__class__.__name__ != "Mosquito"
+            and self.distance_to(a) <= self.vision_range
+            and self.can_see(a, game_map)
+        ]
+        
+        if prey_candidates:
+            closest_prey = min(prey_candidates, key=lambda p: self.distance_to(p))
             
-            if dist_to_frog < self.frog_fear_range * 0.7:
-                dx = self.coordinate[0] - closest_frog.coordinate[0]
-                dy = self.coordinate[1] - closest_frog.coordinate[1]
-                dist = math.hypot(dx, dy)
-                
-                if dist > 1.0:
-                    flee_x = self.coordinate[0] + dx / dist * 250
-                    flee_y = self.coordinate[1] + dy / dist * 250
-                    self.move(dt, (flee_x, flee_y), speed_multiplier=1.8)
-                    self.use_stamina(3.0 * dt)
-            
-            elif dist_to_frog <= 30.0 and random.random() < 0.15:
-                self.try_bite_frog(closest_frog)
-        else:
-            prey_candidates = [
-                a for a in animals
-                if a is not self and a.alive
-                and a.__class__.__name__ != "ToxicFrog"
-                and a.__class__.__name__ != "Mosquito"
-                and self.distance_to(a) <= self.vision_range
-                and self.can_see(a, game_map)
-            ]
-            
-            if prey_candidates:
-                closest_prey = min(prey_candidates, key=lambda p: self.distance_to(p))
-                
-                if self.distance_to(closest_prey) <= self.bite_range:
-                    if random.random() < 0.12:
-                        self.bite(closest_prey)
-                else:
-                    self.move(dt, closest_prey.coordinate, speed_multiplier=1.2)
+            if self.distance_to(closest_prey) <= self.bite_range:
+                if random.random() < 0.12:
+                    self.bite(closest_prey)
             else:
-                if not getattr(self, 'wander_timer', 0) or getattr(self, 'wander_timer', 0) <= 0:
-                    self.wander_timer = random.uniform(3.0, 6.0)
-                    rx = self.coordinate[0] + random.uniform(-300.0, 300.0)
-                    ry = self.coordinate[1] + random.uniform(-300.0, 300.0)
-                    
-                    # 맵 밖으로 나가지 않도록 50픽셀 여백을 두고 가두기
-                    rx = max(50.0, min(float(game_map.pixel_width - 50.0), rx))
-                    ry = max(50.0, min(float(game_map.pixel_height - 50.0), ry))
-                    self.target_coord = [rx, ry]
+                self.move(dt, closest_prey.coordinate, speed_multiplier=1.2)
+        else:
+            # 💡 [추가] 집 찾기 로직
+            if self.try_return_home(dt):
+                self.target_coord = None
+                return
                 
-                self.wander_timer = getattr(self, 'wander_timer', 0) - dt
+            if not getattr(self, 'wander_timer', 0) or getattr(self, 'wander_timer', 0) <= 0:
+                self.wander_timer = random.uniform(3.0, 6.0)
+                rx = self.coordinate[0] + random.uniform(-300.0, 300.0)
+                ry = self.coordinate[1] + random.uniform(-300.0, 300.0)
                 
-                if getattr(self, 'target_coord', None):
-                    self.move(dt, self.target_coord, speed_multiplier=0.8)
-                    if self.distance_to(self.target_coord) < 20.0:
-                        self.target_coord = None
+                rx = max(50.0, min(float(game_map.pixel_width - 50.0), rx))
+                ry = max(50.0, min(float(game_map.pixel_height - 50.0), ry))
+                self.target_coord = [rx, ry]
+            
+            self.wander_timer = getattr(self, 'wander_timer', 0) - dt
+            
+            if getattr(self, 'target_coord', None):
+                self.move(dt, self.target_coord, speed_multiplier=0.8)
+                if self.distance_to(self.target_coord) < 20.0:
+                    self.target_coord = None
 
     def __repr__(self):
         return (f"<Mosquito '{self.name}' hp={self.hp}/{self.max_hp} "
