@@ -197,38 +197,50 @@ class Rhino(Animal):
             return
 
         if self.image:
-            # 만약 이미지가 정상적으로 로드되었다면 이미지로 그림
-            # 화면 좌표 계산
             sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
             
-            # 💡 [핵심 수정] 이미지의 현재 가로, 세로 길이에 각각 카메라 줌 비율을 곱해줍니다!
-            new_w = int(self.image.get_width() * camera.zoom)
-            new_h = int(self.image.get_height() * camera.zoom)
+            # 💡 [핵심 최적화] self 대신 클래스(종류) 전체가 공유하는 캐시 사용!
+            if not hasattr(self.__class__, '_shared_img_cache'):
+                self.__class__._shared_img_cache = {}
                 
-            # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
-            scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
-            scaled_image = pygame.transform.flip(scaled_image, True, False) # 코뿔소는 이미지 바라보는 방향이 반대라 좌우 반전
-
-            scaled_image.set_alpha(255)
-
-            # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
+            zoom_key = round(camera.zoom, 2)
             angle_deg = math.degrees(-self.facing_angle)
-            rotated_image = pygame.transform.rotate(scaled_image, angle_deg)
+            angle_key = int(angle_deg / 5) * 5 
+            
+            # 💡 투명도(은신 상태)까지 포함해서 캐시 키 생성 (유령 버그 방지)
+            is_hidden = getattr(self, 'is_hiding', False)
+            cache_key = (zoom_key, angle_key, is_hidden)
+            
+            # 클래스 캐시에 이미지가 없다면 한 번만 연산
+            if cache_key not in self.__class__._shared_img_cache:
+                new_w = int(self.image.get_width() * camera.zoom)
+                new_h = int(self.image.get_height() * camera.zoom)
                 
-            # 이미지 출력 (중심점 맞추기)
-            rect = rotated_image.get_rect(center=(sx, sy))
-            screen.blit(rotated_image, rect)
+                scaled = pygame.transform.scale(self.image, (new_w, new_h))
+                # (동물별 고유 반전이나 기울기 코드가 있다면 여기에 적용)
                 
-            # 체력바 렌더링
+                final_rotated = pygame.transform.rotate(scaled, angle_key)
+                
+                # 숨은 상태용 캐시라면 투명도를 깎아서 저장
+                if is_hidden:
+                    final_rotated.set_alpha(110)
+                
+                self.__class__._shared_img_cache[cache_key] = final_rotated
+                
+            # 🚀 모든 같은 종의 동물들이 이 이미지 하나를 공유해서 사용!
+            final_image = self.__class__._shared_img_cache[cache_key]
+            rect = final_image.get_rect(center=(sx, sy))
+            screen.blit(final_image, rect)
+                
+            # 체력바 렌더링 (기존 동일)
             hp_ratio = self.hp / self.max_hp
             bar_w = 30 * camera.zoom
             bar_h = 4 * camera.zoom
-            # 체력바 위치도 이미지 세로 크기에 맞춰 유동적으로 조절
+            new_h = int(self.image.get_height() * camera.zoom)
             pygame.draw.rect(screen, (220, 60, 60), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w, bar_h))
             pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w * hp_ratio, bar_h))
         else:
-            # 이미지 로드 실패 시 기본 원으로 그리기(부모 클래스)
-            super().draw(screen, camera)
+            super().draw(screen,camera)
 
     def make_child(self):
         breed_cost = 40.0
@@ -413,34 +425,46 @@ class ElectricEel(Predator):
             return
 
         if self.image:
-            # 만약 이미지가 정상적으로 로드되었다면 이미지로 그림
-            # 화면 좌표 계산
             sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
             
-            # 💡 [핵심 수정] 이미지의 현재 가로, 세로 길이에 각각 카메라 줌 비율을 곱해줍니다!
-            new_w = int(self.image.get_width() * camera.zoom)
-            new_h = int(self.image.get_height() * camera.zoom)
+           # 💡 [핵심 최적화] self 대신 클래스(종류) 전체가 공유하는 캐시 사용!
+            if not hasattr(self.__class__, '_shared_img_cache'):
+                self.__class__._shared_img_cache = {}
                 
-            # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
-            scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
-            scaled_image = pygame.transform.flip(scaled_image, True, False) # 뱀장어는 이미지 바라보는 방향이 반대라 좌우 반전
-            scaled_image = pygame.transform.rotate(scaled_image, 20) # 뱀장어는 살짝 기울어져 있음
-
-            scaled_image.set_alpha(255)
-
-            # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
+            zoom_key = round(camera.zoom, 2)
             angle_deg = math.degrees(-self.facing_angle)
-            rotated_image = pygame.transform.rotate(scaled_image, angle_deg)
+            angle_key = int(angle_deg / 5) * 5 
+            
+            # 💡 투명도(은신 상태)까지 포함해서 캐시 키 생성 (유령 버그 방지)
+            is_hidden = getattr(self, 'is_hiding', False)
+            cache_key = (zoom_key, angle_key, is_hidden)
+            
+            # 클래스 캐시에 이미지가 없다면 한 번만 연산
+            if cache_key not in self.__class__._shared_img_cache:
+                new_w = int(self.image.get_width() * camera.zoom)
+                new_h = int(self.image.get_height() * camera.zoom)
                 
-            # 이미지 출력 (중심점 맞추기)
-            rect = rotated_image.get_rect(center=(sx, sy))
-            screen.blit(rotated_image, rect)
+                scaled = pygame.transform.scale(self.image, (new_w, new_h))
+                # (동물별 고유 반전이나 기울기 코드가 있다면 여기에 적용)
                 
-            # 체력바 렌더링
+                final_rotated = pygame.transform.rotate(scaled, angle_key)
+                
+                # 숨은 상태용 캐시라면 투명도를 깎아서 저장
+                if is_hidden:
+                    final_rotated.set_alpha(110)
+                
+                self.__class__._shared_img_cache[cache_key] = final_rotated
+                
+            # 🚀 모든 같은 종의 동물들이 이 이미지 하나를 공유해서 사용!
+            final_image = self.__class__._shared_img_cache[cache_key]
+            rect = final_image.get_rect(center=(sx, sy))
+            screen.blit(final_image, rect)
+                
+            # 체력바 렌더링 (기존 동일)
             hp_ratio = self.hp / self.max_hp
             bar_w = 30 * camera.zoom
             bar_h = 4 * camera.zoom
-            # 체력바 위치도 이미지 세로 크기에 맞춰 유동적으로 조절
+            new_h = int(self.image.get_height() * camera.zoom)
             pygame.draw.rect(screen, (220, 60, 60), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w, bar_h))
             pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w * hp_ratio, bar_h))
         else:
@@ -718,32 +742,46 @@ class ToxicFrog(Animal):
             return
 
         if self.image:
-            # 만약 이미지가 정상적으로 로드되었다면 이미지로 그림
-            # 화면 좌표 계산
             sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
             
-            # 💡 [핵심 수정] 이미지의 현재 가로, 세로 길이에 각각 카메라 줌 비율을 곱해줍니다!
-            new_w = int(self.image.get_width() * camera.zoom)
-            new_h = int(self.image.get_height() * camera.zoom)
+            # 💡 [핵심 최적화] self 대신 클래스(종류) 전체가 공유하는 캐시 사용!
+            if not hasattr(self.__class__, '_shared_img_cache'):
+                self.__class__._shared_img_cache = {}
                 
-            # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
-            scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
-
-            scaled_image.set_alpha(255)
-
-            # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
+            zoom_key = round(camera.zoom, 2)
             angle_deg = math.degrees(-self.facing_angle)
-            rotated_image = pygame.transform.rotate(scaled_image, angle_deg)
+            angle_key = int(angle_deg / 5) * 5 
+            
+            # 💡 투명도(은신 상태)까지 포함해서 캐시 키 생성 (유령 버그 방지)
+            is_hidden = getattr(self, 'is_hiding', False)
+            cache_key = (zoom_key, angle_key, is_hidden)
+            
+            # 클래스 캐시에 이미지가 없다면 한 번만 연산
+            if cache_key not in self.__class__._shared_img_cache:
+                new_w = int(self.image.get_width() * camera.zoom)
+                new_h = int(self.image.get_height() * camera.zoom)
                 
-            # 이미지 출력 (중심점 맞추기)
-            rect = rotated_image.get_rect(center=(sx, sy))
-            screen.blit(rotated_image, rect)
+                scaled = pygame.transform.scale(self.image, (new_w, new_h))
+                # (동물별 고유 반전이나 기울기 코드가 있다면 여기에 적용)
                 
-            # 체력바 렌더링
+                final_rotated = pygame.transform.rotate(scaled, angle_key)
+                
+                # 숨은 상태용 캐시라면 투명도를 깎아서 저장
+                if is_hidden:
+                    final_rotated.set_alpha(110)
+                
+                self.__class__._shared_img_cache[cache_key] = final_rotated
+                
+            # 🚀 모든 같은 종의 동물들이 이 이미지 하나를 공유해서 사용!
+            final_image = self.__class__._shared_img_cache[cache_key]
+            rect = final_image.get_rect(center=(sx, sy))
+            screen.blit(final_image, rect)
+                
+            # 체력바 렌더링 (기존 동일)
             hp_ratio = self.hp / self.max_hp
             bar_w = 30 * camera.zoom
             bar_h = 4 * camera.zoom
-            # 체력바 위치도 이미지 세로 크기에 맞춰 유동적으로 조절
+            new_h = int(self.image.get_height() * camera.zoom)
             pygame.draw.rect(screen, (220, 60, 60), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w, bar_h))
             pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w * hp_ratio, bar_h))
         else:
@@ -776,8 +814,8 @@ class ToxicFrog(Animal):
 
     def jump(self, dt: float, target: Optional[Tuple[float, float]] = None):
         """도약 이동: 스태미나를 소모해 순간적으로 거리를 벌립니다."""
-        if self.use_stamina(10.0):
-            self.move(dt, target, speed_multiplier=2.5) # 짧은 순간 속도 폭발
+        # 💡 프레임마다 스태미나를 10씩 증발시키던 버그를 제거하고 이동만 시킵니다.
+        self.move(dt, target, speed_multiplier=2.5)
 
     def poison(self, attacker: Animal):
         """자신을 공격한 포식자나 모기에게 독 효과를 부여합니다."""
@@ -821,6 +859,7 @@ class ToxicFrog(Animal):
 
                     #도약해서 먹을 수 있을 때
                     elif dist <= 120.0 and self.stamina >= 10.0:
+                        self.use_stamina(10.0 * dt) # 💡 사냥 중일 때는 초당 10씩 소모하도록 보정
                         self.jump(dt, target=a.coordinate)
                         break
         if not getattr(self, 'is_hunting', False) and not getattr(self, 'is_fleeing', False):
@@ -838,6 +877,19 @@ class ToxicFrog(Animal):
                             self.target_coord = [closest_apple.x, closest_apple.y]
                             self.move(dt, self.target_coord, speed_multiplier=0.8)
                         return
+            
+            # 💧 [추가] 갈증 해소 로직 (살기 위해 물가로 이동)
+            if self.is_seeking_water and getattr(self, '_water_target', None):
+                self.move(dt, self._water_target)
+                self.target_coord = None # 물을 찾을 때는 랜덤 배회 타겟 초기화
+                return
+                
+            # 💕 [추가] 짝꿍 따라가기
+            couple_tgt = self.couple_follow()
+            if couple_tgt:
+                self.move(dt, couple_tgt)
+                self.target_coord = None
+                return
                 
             if not getattr(self, 'target_coord', None):
                 if random.random() < 0.05: 
@@ -860,3 +912,13 @@ class ToxicFrog(Animal):
                     random.random() < 0.02):
                     self.use_stamina(10.0) # 점프 시작 시 1회 소모
                     self.jump_boost_timer = 0.8 # 0.8초 동안 가속
+                
+                # 💡 [핵심 수정] 아래의 이동 및 타겟 초기화 코드가 누락되어 있었습니다!
+                if getattr(self, 'jump_boost_timer', 0) > 0:
+                    self.jump(dt, target=self.target_coord) # 부스트 중일 때는 점프(고속 이동)
+                else:
+                    self.move(dt, target=self.target_coord) # 아닐 때는 일반 이동
+                    
+                # 목적지에 도달하면 타겟을 비워서 다음 랜덤 위치를 찾게 만듭니다
+                if self.distance_to(self.target_coord) < 15.0:
+                    self.target_coord = None

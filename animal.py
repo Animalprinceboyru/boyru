@@ -56,14 +56,12 @@ def has_line_of_sight(observer, target_coord: Tuple[float, float],
 #  Egg
 # ════════════════════════════════════════════════
 
+# 🥚 [추가] 알 전용 이미지 캐시 딕셔너리
+EGG_IMAGE_CACHE = {}
+
 class Egg:
     """
     알 클래스. 부모 동물이 번식 시 생성되며, hatch_time 초 후 부화한다.
-
-    사용 흐름:
-        1. Animal._update_home() → Egg 생성 후 반환
-        2. system.py에서 eggs 리스트를 관리하며 매 프레임 egg.update(dt) 호출
-        3. update()가 Animal 인스턴스를 반환하면 animals 리스트에 추가
     """
 
     def __init__(
@@ -77,6 +75,28 @@ class Egg:
         self.hatch_time = hatch_time
         self.hatch_timer = 0.0
         self.hatched = False
+        self.size = 20.0  # 알 기본 크기
+
+        # 💡 최초 1회만 이미지를 캐시에 로드합니다.
+        self.image_path = "egg.png"
+        self.image = None
+
+        if self.image_path not in EGG_IMAGE_CACHE:
+            try:
+                loaded_img = pygame.image.load(self.image_path).convert_alpha()
+                EGG_IMAGE_CACHE[self.image_path] = loaded_img
+            except Exception as e:
+                print(f"⚠️ 알 이미지 로드 실패: {e}")
+                EGG_IMAGE_CACHE[self.image_path] = None
+                
+        orig_img = EGG_IMAGE_CACHE[self.image_path]
+        if orig_img is not None:
+            orig_w, orig_h = orig_img.get_size()
+            target_max_size = int(self.size * 1.5)
+            scale_factor = target_max_size / max(orig_w, orig_h)
+            new_w = int(orig_w * scale_factor)
+            new_h = int(orig_h * scale_factor)
+            self.image = pygame.transform.scale(orig_img, (new_w, new_h))
 
     def update(self, dt: float) -> Optional["Animal"]:
         """
@@ -103,17 +123,52 @@ class Egg:
         return min(1.0, self.hatch_timer / self.hatch_time)
 
     def draw(self, screen: "pygame.Surface", camera):
-        """알 렌더링: 작은 타원 + 부화 진행 바."""
+        """알 렌더링: 이미지 (또는 기본 타원) + 부화 진행 바."""
         if self.hatched:
             return
+            
         sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
-        pygame.draw.ellipse(screen, (210, 200, 170),
-                            (int(sx) - 5, int(sy) - 4, 10, 8))
-        bw = 12
-        bx, by = int(sx) - bw // 2, int(sy) - 10
-        pygame.draw.rect(screen, (60, 60, 60), (bx, by, bw, 2))
+        
+        # 최적화: 화면 밖이면 렌더링 안 함
+        margin = 50
+        if not (-margin < sx < camera.screen_w + margin and -margin < sy < camera.screen_h + margin):
+            return
+
+        if self.image:
+            if not hasattr(self.__class__, '_shared_img_cache'):
+                self.__class__._shared_img_cache = {}
+                
+            zoom_key = round(camera.zoom, 2) # 혹은 camera.zoom 대신 zoom (함수 파라미터에 맞게)
+            
+            if zoom_key not in self.__class__._shared_img_cache:
+                new_w = int(self.image.get_width() * zoom_key) # Apple은 self.image.get_width() * zoom
+                new_h = int(self.image.get_height() * zoom_key)
+                self.__class__._shared_img_cache[zoom_key] = pygame.transform.scale(self.image, (new_w, new_h))
+                
+            scaled_image = self.__class__._shared_img_cache[zoom_key]
+            rect = scaled_image.get_rect(center=(int(sx), int(sy)))
+            screen.blit(scaled_image, rect)
+            
+            # 진행 바 위치 설정 (이미지 크기에 맞춤)
+            new_h = scaled_image.get_height()
+            bw = 15 * camera.zoom
+            bh = 3 * camera.zoom
+            bx = sx - bw / 2
+            by = sy - (new_h / 2) - (6 * camera.zoom)
+        else:
+            # 이미지 로드 실패 시 폴백 (기본 타원)
+            pygame.draw.ellipse(screen, (210, 200, 170),
+                                (int(sx) - int(5*camera.zoom), int(sy) - int(4*camera.zoom), 
+                                 int(10*camera.zoom), int(8*camera.zoom)))
+            bw = 12 * camera.zoom
+            bh = 2 * camera.zoom
+            bx = sx - bw / 2
+            by = sy - (10 * camera.zoom)
+
+        # 부화 진행 바 그리기
+        pygame.draw.rect(screen, (60, 60, 60), (bx, by, bw, bh))
         pygame.draw.rect(screen, (255, 200, 50),
-                         (bx, by, int(bw * self.hatch_progress), 2))
+                         (bx, by, int(bw * self.hatch_progress), bh))
 
     def __repr__(self):
         return (f"<Egg parent={self.parent.name} "
