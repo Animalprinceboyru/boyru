@@ -353,7 +353,7 @@ class Anaconda(Predator):
                 if random.random() < self._calc_ambush_success_rate(t):
                     # 기습 성공 → choke + 처치
                     self.choke(t, dt)
-                    self.attack(t, base_damage=30.0)
+                    self.attack(t)
                     if not t.alive:
                         self.eat(45.0)
                         self._set_state(self._STATE_IDLE)
@@ -382,7 +382,7 @@ class Anaconda(Predator):
 
             if self.distance_to(t) <= self.attack_range:
                 if random.random() < self.attack_success_rate:
-                    self.attack(t, base_damage=25.0)
+                    self.attack(t)
                     if not t.alive:
                         self.eat(40.0)
                         self._set_state(self._STATE_IDLE)
@@ -747,7 +747,7 @@ class Crocodile(Predator):
             self.use_stamina(12.0 * dt)
             if self.distance_to(t) <= self.attack_range:
                 if random.random() < self.attack_success_rate:
-                    self.attack(t, base_damage=40.0)
+                    self.attack(t)
                     if not t.alive:
                         self.eat(50.0)
                         self._set_state(self._IDLE)
