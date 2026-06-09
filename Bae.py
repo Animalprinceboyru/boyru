@@ -1060,7 +1060,7 @@ class Tarantula(Predator):
         target.apply_stun(0.3)
         return True
 
-    def _feed(self, food_value: float = 35.0):
+    def _feed(self, food_value: float = 55.0):
         """포식 처리. 거미는 먹이에서 수분도 얻으므로 갈증도 조금 해소."""
         self.eat(food_value)
         self.thirst = max(0.0, self.thirst - 25.0)   # 먹이에서 수분 보충(drink 메서드 비의존)

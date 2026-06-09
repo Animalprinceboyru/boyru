@@ -192,7 +192,8 @@ class Capybara(Prey):
             
             # 이미 물속이라면 포식자(전기뱀장어 등) 반대 방향으로 회피
             if getattr(self, 'environment_status', '') == 'water':
-                self.flee_from(closest, dt)
+                if random.random()<0.3:
+                    self.flee_from(closest, dt)
             else:
                 self.flee_to_water(game_map, dt, closest)
             self.target_coord = None
