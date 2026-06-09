@@ -60,7 +60,6 @@ class Anaconda(Predator):
           기습 성공 → choke + eat
           기습 실패 → chasing(추격)
       [육지] 최대속도·가속도·스태미나 감소 패널티
-             추격 중이 아니면 물가로 복귀하려 배회
     """
 
     SPECIES_VISION_RANGE: float = 200.0
@@ -126,7 +125,6 @@ class Anaconda(Predator):
         # 배회
         self._wander_target: Optional[Tuple[float, float]] = None
         self._wander_timer: float = 0.0
-        self._is_behind_tree = False # 💡 나무 뒤 숨김 효과 플래그
 
         # 💡 1. 여기서 아나콘다 전용 이미지를 설정
         self.image_path = "anaconda.png"  # 아나콘다 이미지 파일명
@@ -225,6 +223,7 @@ class Anaconda(Predator):
 
     # ── 배회 ────────────────────────────────────
 
+    # Bae.py - Anaconda 클래스의 _wander 메서드 교체
     def _wander(self, dt: float, game_map):
         self._wander_timer -= dt
         if (self._wander_target is None or 
@@ -394,36 +393,23 @@ class Anaconda(Predator):
     # ── 업데이트 ─────────────────────────────────
 
     def update(self, dt: float, game_map, weather, animals: List[Animal]):
-        # 💡 Predator의 기본 자동 사냥 로직을 건너뛰기 위해
-        #    super().update()(=Predator.update) 대신 Animal.update를 직접 호출한다.
-        #    이렇게 하면 나이/갈증/스태미나 등 공통 처리는 그대로 돌면서
-        #    포식 행동은 아래 매복 FSM이 단독으로 제어한다.
-        Animal.update(self, dt, game_map, weather, animals)
+        super().update(dt, game_map, weather, animals)
         if not self.alive:
             return
-            
-        # 💡 [핵심 구현] 나무 뒤 X-ray 효과를 위한 충돌 판정
-        tree = game_map.get_tree_at_pixel(self.coordinate[0], self.coordinate[1])
-        self._is_behind_tree = (tree is not None and self.coordinate[1] < tree.coordinate[1])
 
         self._apply_environment_stats(game_map)
         self._apply_land_stamina_drain(dt)
 
         # 물속일 때만 매복 FSM 작동
-        # 육지에서는 은신 해제, 추격 중이면 계속 추격, 아니면 물가로 복귀하려 배회
+        # 육지에서는 은신 해제, 추격 중이면 계속 추격
         if self.environment_status == "water":
+            self.stop_hunt()   # Predator 기본 사냥 비활성화
             self._update_behavior(dt, animals, game_map)
         else:
             if self.hidden:
                 self.stop_hide()
             if self._state == self._STATE_CHASING:
                 self._update_behavior(dt, animals, game_map)
-            else:
-                # 육지 + 비추격: 멈춰 있지 않도록 배회(배회 목표가 물 쪽으로 잡혀 자연스럽게 물로 복귀)
-                self._wander(dt, game_map)
-                # 물속에서 잡았던 매복 상태(waiting/rushing)는 초기화
-                if self._state != self._STATE_IDLE:
-                    self._set_state(self._STATE_IDLE)
 
     # ── 번식 ────────────────────────────────────
 
@@ -469,12 +455,6 @@ class Anaconda(Predator):
             scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
             scaled_image = pygame.transform.flip(scaled_image, True, False) # 뱀장어는 이미지 바라보는 방향이 반대라 좌우 반전
             scaled_image = pygame.transform.rotate(scaled_image, 20) # 뱀장어는 살짝 기울어져 있음
-            
-            # 💡 [핵심 구현] 나무 뒤 투시(X-ray) 효과 적용
-            if getattr(self, '_is_behind_tree', False):
-                scaled_image.set_alpha(100) # 반투명 처리
-            else:
-                scaled_image.set_alpha(255)
 
             # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
             angle_deg = math.degrees(-self.facing_angle)
@@ -494,7 +474,6 @@ class Anaconda(Predator):
         else:
             # 이미지 로드 실패 시 기본 원으로 그리기(부모 클래스)
             super().draw(screen, camera)
-            
     def __repr__(self):
         return (f"<Anaconda '{self.name}' hp={self.hp}/{self.max_hp} "
                 f"state={self._state} hidden={self.hidden} "
@@ -562,7 +541,6 @@ class Crocodile(Predator):
         # 배회
         self._wander_target = None
         self._wander_timer  = 0.0
-        self._is_behind_tree = False # 💡 나무 뒤 숨김 효과 플래그
 
         # 💡 1. 여기서 악어 전용 이미지를 설정
         self.image_path = "crocodile.png"  # 악어 이미지 파일명
@@ -641,6 +619,7 @@ class Crocodile(Predator):
 
     # ── 배회 ────────────────────────────────────
 
+    # Bae.py - Crocodile 클래스의 _wander 메서드 교체
     def _wander(self, dt, game_map):
         self._wander_timer -= dt
         if (self._wander_target is None or 
@@ -767,15 +746,9 @@ class Crocodile(Predator):
     # ── 업데이트 ─────────────────────────────────
 
     def update(self, dt, game_map, weather, animals):
-        # 💡 Predator의 기본 자동 사냥 로직을 건너뛰기 위해
-        #    super().update()(=Predator.update) 대신 Animal.update를 직접 호출한다.
-        Animal.update(self, dt, game_map, weather, animals)
+        super().update(dt, game_map, weather, animals)
         if not self.alive:
             return
-
-        # 💡 [핵심 구현] 나무 뒤 X-ray 효과를 위한 충돌 판정
-        tree = game_map.get_tree_at_pixel(self.coordinate[0], self.coordinate[1])
-        self._is_behind_tree = (tree is not None and self.coordinate[1] < tree.coordinate[1])
 
         # 커플 맺기 시도
         if self.couple is None:
@@ -783,6 +756,7 @@ class Crocodile(Predator):
                 if self.try_form_couple(a):
                     break
 
+        self.stop_hunt()
         self._apply_land_drain(dt)
         if self.environment_status != "water" and self._state == self._LURKING:
             self._set_state(self._IDLE)
@@ -831,12 +805,6 @@ class Crocodile(Predator):
             scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
             scaled_image = pygame.transform.flip(scaled_image, True, False) # 뱀장어는 이미지 바라보는 방향이 반대라 좌우 반전
             scaled_image = pygame.transform.rotate(scaled_image, 20) # 뱀장어는 살짝 기울어져 있음
-            
-            # 💡 [핵심 구현] 나무 뒤 투시(X-ray) 효과 적용
-            if getattr(self, '_is_behind_tree', False):
-                scaled_image.set_alpha(100) # 반투명 처리
-            else:
-                scaled_image.set_alpha(255)
 
             # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
             angle_deg = math.degrees(-self.facing_angle)

@@ -547,3 +547,89 @@ class GameMap:
         if tile in (TileType.WATER, TileType.DEEP_WATER):
             return "water"
         return "land"
+
+    # ══════════════════════════════════════════
+    # Y-Sorting (2.5D 정렬)을 위한 동적 나무 렌더링
+    # ══════════════════════════════════════════
+    def draw_tree_over_animal(self, screen: pygame.Surface, camera_x: float, camera_y: float, zoom: float, tree: Tree):
+        """줌이 적용된 화면에서 나무를 특정 동물의 위에 덧그려 완벽히 가려지게 만듭니다."""
+        def tr(x, y, w, h):
+            return (int((x - camera_x) * zoom), int((y - camera_y) * zoom), 
+                    max(1, int(w * zoom)), max(1, int(h * zoom)))
+
+        px, py = tree.pixel_pos
+        w_size = tree.width_tiles
+        h_size = tree.height_tiles
+
+        if tree.broken:
+            pygame.draw.rect(screen, (55, 35, 18),
+                             tr(px - TILE_SIZE, py, TILE_SIZE * w_size, TILE_SIZE // 2))
+            return
+
+        trunk_h  = int(TILE_SIZE * (1.5 + h_size * 0.3))
+        trunk_w  = int(TILE_SIZE * (0.3 + w_size * 0.1))
+        canopy_w = int(TILE_SIZE * (1.8 + w_size * 0.5))
+        layers   = max(3, w_size + h_size - 1)
+
+        if tree.tree_type == "tall":
+            trunk_h  = int(trunk_h  * 1.35)
+            canopy_w = int(canopy_w * 0.85)
+        elif tree.tree_type == "wide":
+            trunk_h  = int(trunk_h  * 0.85)
+            canopy_w = int(canopy_w * 1.30)
+
+        canopy_base_y = py - trunk_h
+
+        trunk_colors = {
+            "normal": (50, 32, 18),
+            "tall":   (42, 26, 14),
+            "wide":   (58, 38, 22),
+        }
+        tc = trunk_colors.get(tree.tree_type, (50, 32, 18))
+        tx = px - trunk_w // 2
+        ty_trunk = py - trunk_h + TILE_SIZE
+
+        pygame.draw.rect(screen, tc, tr(tx, ty_trunk, trunk_w, trunk_h))
+        pygame.draw.rect(screen, tuple(min(255, c + 10) for c in tc),
+                         tr(tx + 2, ty_trunk + 4, max(2, trunk_w//5), trunk_h - 8))
+        pygame.draw.rect(screen, tuple(max(0, c - 14) for c in tc),
+                         tr(tx + trunk_w - max(3, trunk_w//5), ty_trunk, max(3, trunk_w//5), trunk_h))
+
+        vine_count = max(1, (w_size + h_size) // 2 - 1)
+        rng = tree.tile_x * 17 + tree.tile_y * 23
+        for i in range(vine_count):
+            vx = px + ((rng + i * 7) % canopy_w) - canopy_w // 2
+            vl = TILE_SIZE + ((rng + i * 11) % TILE_SIZE)
+            pygame.draw.rect(screen, (20, 50, 20), tr(vx, canopy_base_y, 2, vl))
+            for ly in range(int(canopy_base_y) + 8, int(canopy_base_y + vl), 12):
+                pygame.draw.rect(screen, (25, 60, 25), tr(vx - 2, ly, 6, 4))
+
+        canopy_palettes = {
+            "normal": [(12,40,15),(18,55,20),(28,75,28),(40,95,35)],
+            "tall":   [(10,35,12),(15,50,18),(25,70,25),(35,85,30),(48,105,38)],
+            "wide":   [(15,45,18),(22,60,22),(32,80,30),(45,100,40),(55,120,45)],
+        }
+        palette = canopy_palettes.get(tree.tree_type, canopy_palettes["normal"])
+
+        for i in range(layers):
+            cw    = int(canopy_w * (1.0 - i * 0.10))
+            ch    = int(cw * 0.65)
+            cx    = px - cw // 2
+            cy    = canopy_base_y - i * (8 + max(w_size, h_size))
+            color = palette[min(i, len(palette) - 1)]
+            pygame.draw.rect(screen, color, tr(cx, cy, cw, ch))
+
+        top_cw = int(canopy_w * (1.0 - (layers-1) * 0.10))
+        top_cy = canopy_base_y - (layers-1) * (8 + max(w_size, h_size))
+        hl     = tuple(min(255, c + 18) for c in palette[-1])
+        pygame.draw.rect(screen, hl, tr(px - top_cw//2 + 3, top_cy, top_cw - 6, 3))
+
+        if tree.has_nest:
+            nest_w = TILE_SIZE + (max(w_size, h_size) - 2) * 6
+            nest_h = TILE_SIZE // 2 + (max(w_size, h_size) - 2) * 3
+            nx     = px + canopy_w // 4
+            ny     = canopy_base_y + TILE_SIZE // 3
+            pygame.draw.rect(screen, (85, 60, 25), tr(nx, ny, nest_w, nest_h))
+            pygame.draw.rect(screen, (115, 80, 35), tr(nx+2, ny+2, nest_w-4, nest_h-4))
+            if tree.nest_occupied:
+                pygame.draw.rect(screen, (220, 210, 190), tr(nx + nest_w//4, ny+2, 8, 6))

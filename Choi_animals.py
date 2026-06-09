@@ -208,12 +208,8 @@ class Rhino(Animal):
             # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
             scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
             scaled_image = pygame.transform.flip(scaled_image, True, False) # 코뿔소는 이미지 바라보는 방향이 반대라 좌우 반전
-            
-            # 💡 [핵심 구현] 나무 뒤 투시(X-ray) 효과 적용
-            if getattr(self, '_is_behind_tree', False):
-                scaled_image.set_alpha(100) # 반투명 처리
-            else:
-                scaled_image.set_alpha(255)
+
+            scaled_image.set_alpha(255)
 
             # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
             angle_deg = math.degrees(-self.facing_angle)
@@ -430,11 +426,7 @@ class ElectricEel(Predator):
             scaled_image = pygame.transform.flip(scaled_image, True, False) # 뱀장어는 이미지 바라보는 방향이 반대라 좌우 반전
             scaled_image = pygame.transform.rotate(scaled_image, 20) # 뱀장어는 살짝 기울어져 있음
 
-            # 💡 [핵심 구현] 나무 뒤 투시(X-ray) 효과 적용
-            if getattr(self, '_is_behind_tree', False):
-                scaled_image.set_alpha(100) # 반투명 처리
-            else:
-                scaled_image.set_alpha(255)
+            scaled_image.set_alpha(255)
 
             # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
             angle_deg = math.degrees(-self.facing_angle)
@@ -737,11 +729,7 @@ class ToxicFrog(Animal):
             # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
             scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
 
-            # 💡 [핵심 구현] 나무 뒤 투시(X-ray) 효과 적용
-            if getattr(self, '_is_behind_tree', False):
-                scaled_image.set_alpha(100) # 반투명 처리
-            else:
-                scaled_image.set_alpha(255)
+            scaled_image.set_alpha(255)
 
             # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
             angle_deg = math.degrees(-self.facing_angle)

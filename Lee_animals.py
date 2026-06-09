@@ -38,7 +38,6 @@ class Capybara(Prey):
         # 평상시 배회를 위한 변수
         self.target_coord: Optional[List[float]] = None
         self.wander_timer = 0.0
-        self._is_behind_tree = False # 나무 뒤 숨김 효과 플래그
 
         # 💡 1. 여기서 카피바라 전용 이미지를 설정
         self.image_path = "capybara.png"  # 카피바라 이미지 파일명
@@ -96,13 +95,8 @@ class Capybara(Prey):
                 
             # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
             scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
-            scaled_image = pygame.transform.flip(scaled_image, True, False) 
-            
-            # 💡 [핵심 구현] 나무 뒤 투시(X-ray) 효과 적용
-            if getattr(self, '_is_behind_tree', False):
-                scaled_image.set_alpha(100) # 반투명 처리
-            else:
-                scaled_image.set_alpha(255)
+            scaled_image = pygame.transform.flip(scaled_image, True, False) # 뱀장어는 이미지 바라보는 방향이 반대라 좌우 반전
+            scaled_image = pygame.transform.rotate(scaled_image, 20) # 뱀장어는 살짝 기울어져 있음
 
             # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
             angle_deg = math.degrees(-self.facing_angle)
@@ -174,10 +168,6 @@ class Capybara(Prey):
         Animal.update(self, dt, game_map, weather, animals)
         if not self.alive or self.is_stunned:
             return
-            
-        # 💡 [핵심 구현] 나무 뒤 X-ray 효과를 위한 충돌 판정
-        tree = game_map.get_tree_at_pixel(self.coordinate[0], self.coordinate[1])
-        self._is_behind_tree = (tree is not None and self.coordinate[1] < tree.coordinate[1])
         
         self.socialize(animals)
         predators = self.detect_predators(animals, game_map)
@@ -233,9 +223,6 @@ class Monkey(Prey):
         self.target_coord: Optional[List[float]] = None
         self.wander_timer = 0.0
         self.throw_cooldown = 0.0
-        
-        self._is_behind_tree = False # 나무 뒤 숨김 효과 플래그
-        self.projectiles = []        # 🍎 사과 투사체 애니메이션 배열
 
         # 💡 1. 여기서 원숭이 전용 이미지를 설정
         self.image_path = "monkey.png"  # 원숭이 이미지 파일명
@@ -272,37 +259,29 @@ class Monkey(Prey):
     def draw(self, screen: pygame.Surface, camera):
         if not self.alive:
             return
-            
-        draw_y = self.coordinate[1]
-        
-        # 💡 [핵심 구현] 원숭이가 나무 위에 있다면, 수관(Canopy) 높이만큼 Y축을 빼서 '나무 잎사귀 위'에 그려지게 합니다. (2.5D 효과)
-        if self.on_tree and self.current_tree:
-            draw_y -= (self.current_tree.height_tiles * 32)
         
         # 1. 화면 좌표를 먼저 계산합니다.
-        sx, sy = camera.world_to_screen(self.coordinate[0], draw_y)
+        sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
         
         # 💡 [최적화 핵심] 동물이 화면을 완전히 벗어났다면 아예 연산(스케일, 회전)을 하지 않고 종료합니다.
         # 여유 공간(margin)을 약 100픽셀 정도 두어 자연스럽게 사라지도록 합니다.
         margin = 100
-        # 화면 밖에 있어도 날아가는 사과 투사체가 있다면 렌더링 스킵 금지
-        if not (-margin < sx < camera.screen_w + margin and -margin < sy < camera.screen_h + margin) and not self.projectiles:
+        if not (-margin < sx < camera.screen_w + margin and -margin < sy < camera.screen_h + margin):
             return
 
         if self.image:
+            # 만약 이미지가 정상적으로 로드되었다면 이미지로 그림
+            # 화면 좌표 계산
+            sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
+            
             # 💡 [핵심 수정] 이미지의 현재 가로, 세로 길이에 각각 카메라 줌 비율을 곱해줍니다!
             new_w = int(self.image.get_width() * camera.zoom)
             new_h = int(self.image.get_height() * camera.zoom)
                 
             # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
             scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
-            scaled_image = pygame.transform.flip(scaled_image, True, False) 
-            
-            # 💡 [핵심 구현] 나무 뒤 투시(X-ray) 효과
-            if getattr(self, '_is_behind_tree', False):
-                scaled_image.set_alpha(100) # 반투명 처리
-            else:
-                scaled_image.set_alpha(255)
+            scaled_image = pygame.transform.flip(scaled_image, True, False) # 뱀장어는 이미지 바라보는 방향이 반대라 좌우 반전
+            scaled_image = pygame.transform.rotate(scaled_image, 20) # 뱀장어는 살짝 기울어져 있음
 
             # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
             angle_deg = math.degrees(-self.facing_angle)
@@ -322,33 +301,8 @@ class Monkey(Prey):
         else:
             # 이미지 로드 실패 시 기본 원으로 그리기(부모 클래스)
             super().draw(screen, camera)
-            
-        # 🍎 [핵심 구현] 사과 투척 시각화
-        for proj in self.projectiles:
-            tx, ty = proj['target'].coordinate
-            
-            # 진행도(progress 0.0 ~ 1.0)에 따라 X, Y 선형 보간 이동
-            cur_x = proj['start_x'] + (tx - proj['start_x']) * proj['progress']
-            cur_y = proj['start_y'] + (ty - proj['start_y']) * proj['progress']
-            
-            # Z축 곡선(포물선) 적용: 위로 볼록하게 날아가는 느낌 (math.sin 사용)
-            arc_height = math.sin(proj['progress'] * math.pi) * 80.0
-            cur_y -= arc_height
-            
-            psx, psy = camera.world_to_screen(cur_x, cur_y)
-            
-            # 빨간 사과와 초록 잎사귀 그리기
-            pygame.draw.circle(screen, (220, 40, 40), (int(psx), int(psy)), max(2, int(6 * camera.zoom)))
-            pygame.draw.circle(screen, (40, 200, 40), (int(psx - 2*camera.zoom), int(psy - 3*camera.zoom)), max(1, int(3 * camera.zoom)))
 
     def take_damage(self, amount: float, source: str = "unknown", attacker: Optional[Animal] = None):
-        # 💡 [핵심 구현] Z값 무적 판정: 원숭이가 나무 위에 있을 때 지상 공격 완전 무시
-        if self.on_tree:
-            # 공격자가 있고, 비행생물이 아니며(수중/육지 생물인 경우) 
-            if attacker and not getattr(attacker, 'can_fly', False):
-                print(f"🌲🐒 [{self.name}]는 높은 나뭇잎 속에 숨어있어 {attacker.name}의 지상 공격을 완벽히 무시합니다!")
-                return # 데미지 안받음!
-                
         """
         [계획서 사양 구현] 지상 포식자 공격은 80% 확률로 자동 회피합니다.
         """
@@ -383,19 +337,10 @@ class Monkey(Prey):
             self.inventory -= 1
             self.throw_cooldown = 2.0  # 무한 투척 방지 쿨타임
             print(f"🐒 [{self.name}]가 조준하여 포식자 {target.name}의 머리에 단단한 야생 과일을 던졌습니다!")
-            
-            # 🍎 투사체 데이터 생성
-            start_y = self.coordinate[1]
-            if self.on_tree and self.current_tree:
-                start_y -= (self.current_tree.height_tiles * 32) # 나무 위에서 발사
-                
-            self.projectiles.append({
-                'start_x': self.coordinate[0],
-                'start_y': start_y,
-                'target': target,
-                'progress': 0.0,
-                'speed': 3.0 # 배속 (1초에 300% 진행 = 0.33초만에 도달)
-            })
+            target.apply_stun(2.0)               
+            target.use_stamina(15.0)
+            if hasattr(target, 'stop_hunt'):
+                target.stop_hunt()
 
     def react_to_predator(self, dt: float, predators: List[Animal], game_map):
         closest_predator = min(predators, key=lambda p: self.distance_to(p))
@@ -425,26 +370,6 @@ class Monkey(Prey):
         Animal.update(self, dt, game_map, weather, animals)
         if not self.alive or self.is_stunned:
             return
-            
-        # 🍎 투사체 이동 및 스턴 로직 적용
-        for proj in self.projectiles[:]:
-            proj['progress'] += dt * proj['speed']
-            if proj['progress'] >= 1.0: # 타겟에 도달!
-                self.projectiles.remove(proj)
-                target = proj['target']
-                if target.alive:
-                    print(f"💥 퍽! {self.name}가 던진 사과가 {target.name}의 머리에 적중했습니다!")
-                    target.apply_stun(2.0)               
-                    target.use_stamina(15.0)
-                    if hasattr(target, 'stop_hunt'):
-                        target.stop_hunt()
-
-        # 💡 [핵심 구현] 나무 뒤 X-ray 효과를 위한 충돌 판정 (나무 위에 없을 때만 적용)
-        if not self.on_tree:
-            tree = game_map.get_tree_at_pixel(self.coordinate[0], self.coordinate[1])
-            self._is_behind_tree = (tree is not None and self.coordinate[1] < tree.coordinate[1])
-        else:
-            self._is_behind_tree = False
 
         if self.throw_cooldown > 0:
             self.throw_cooldown -= dt
@@ -511,7 +436,6 @@ class Parrot(FlyingAnimal, Prey):
         self.target_coord: Optional[List[float]] = None
         self.wander_timer = 0.0
         self.alert_cooldown = 0.0
-        self._is_behind_tree = False # 나무 뒤 숨김 효과 플래그
 
         # 💡 1. 여기서 앵무새 전용 이미지를 설정
         self.image_path = "parrot.png"  # 앵무새 이미지 파일명
@@ -548,15 +472,8 @@ class Parrot(FlyingAnimal, Prey):
     def draw(self, screen: pygame.Surface, camera):
         if not self.alive:
             return
-            
-        draw_y = self.coordinate[1]
-        
-        # 날고 있을 때는 나무 높이와 비슷하게 Y축 상향 보정 (3D 효과)
-        if getattr(self, 'is_flying', False):
-            draw_y -= 80.0 
-            
         # 1. 화면 좌표를 먼저 계산합니다.
-        sx, sy = camera.world_to_screen(self.coordinate[0], draw_y)
+        sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
         
         # 💡 [최적화 핵심] 동물이 화면을 완전히 벗어났다면 아예 연산(스케일, 회전)을 하지 않고 종료합니다.
         # 여유 공간(margin)을 약 100픽셀 정도 두어 자연스럽게 사라지도록 합니다.
@@ -566,19 +483,17 @@ class Parrot(FlyingAnimal, Prey):
 
         if self.image:
             # 만약 이미지가 정상적으로 로드되었다면 이미지로 그림
+            # 화면 좌표 계산
+            sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
+            
             # 💡 [핵심 수정] 이미지의 현재 가로, 세로 길이에 각각 카메라 줌 비율을 곱해줍니다!
             new_w = int(self.image.get_width() * camera.zoom)
             new_h = int(self.image.get_height() * camera.zoom)
                 
             # 비율이 유지된 채로 줌인/줌아웃 되도록 스케일링
             scaled_image = pygame.transform.scale(self.image, (new_w, new_h))
-            scaled_image = pygame.transform.flip(scaled_image, True, False) 
-            
-            # 💡 [핵심 구현] 나무 뒤 투시(X-ray) 효과 적용
-            if getattr(self, '_is_behind_tree', False):
-                scaled_image.set_alpha(100) # 반투명 처리
-            else:
-                scaled_image.set_alpha(255)
+            scaled_image = pygame.transform.flip(scaled_image, True, False) # 뱀장어는 이미지 바라보는 방향이 반대라 좌우 반전
+            scaled_image = pygame.transform.rotate(scaled_image, 20) # 뱀장어는 살짝 기울어져 있음
 
             # 💡 2. 진행 방향(facing_angle)을 기준으로 회전 적용
             angle_deg = math.degrees(-self.facing_angle)
@@ -636,13 +551,6 @@ class Parrot(FlyingAnimal, Prey):
         
         if not self.alive or self.is_stunned:
             return
-            
-        # 💡 [핵심 구현] 날지 않고 걸어다닐 때만 나무 뒤 투시 효과 발동
-        if not getattr(self, 'is_flying', False):
-            tree = game_map.get_tree_at_pixel(self.coordinate[0], self.coordinate[1])
-            self._is_behind_tree = (tree is not None and self.coordinate[1] < tree.coordinate[1])
-        else:
-            self._is_behind_tree = False
 
         predators = self.detect_predators(animals, game_map)
         if predators:
