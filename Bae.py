@@ -60,6 +60,7 @@ class Anaconda(Predator):
           기습 성공 → choke + eat
           기습 실패 → chasing(추격)
       [육지] 최대속도·가속도·스태미나 감소 패널티
+             추격 중이 아니면 물가로 복귀하려 배회
     """
 
     SPECIES_VISION_RANGE: float = 200.0
@@ -393,7 +394,11 @@ class Anaconda(Predator):
     # ── 업데이트 ─────────────────────────────────
 
     def update(self, dt: float, game_map, weather, animals: List[Animal]):
-        super().update(dt, game_map, weather, animals)
+        # 💡 Predator의 기본 자동 사냥 로직을 건너뛰기 위해
+        #    super().update()(=Predator.update) 대신 Animal.update를 직접 호출한다.
+        #    이렇게 하면 나이/갈증/스태미나 등 공통 처리는 그대로 돌면서
+        #    포식 행동은 아래 매복 FSM이 단독으로 제어한다.
+        Animal.update(self, dt, game_map, weather, animals)
         if not self.alive:
             return
 
@@ -401,15 +406,20 @@ class Anaconda(Predator):
         self._apply_land_stamina_drain(dt)
 
         # 물속일 때만 매복 FSM 작동
-        # 육지에서는 은신 해제, 추격 중이면 계속 추격
+        # 육지에서는 은신 해제, 추격 중이면 계속 추격, 아니면 물가로 복귀하려 배회
         if self.environment_status == "water":
-            self.stop_hunt()   # Predator 기본 사냥 비활성화
             self._update_behavior(dt, animals, game_map)
         else:
             if self.hidden:
                 self.stop_hide()
             if self._state == self._STATE_CHASING:
                 self._update_behavior(dt, animals, game_map)
+            else:
+                # 육지 + 비추격: 멈춰 있지 않도록 배회(배회 목표가 물 쪽으로 잡혀 자연스럽게 물로 복귀)
+                self._wander(dt, game_map)
+                # 물속에서 잡았던 매복 상태(waiting/rushing)는 초기화
+                if self._state != self._STATE_IDLE:
+                    self._set_state(self._STATE_IDLE)
 
     # ── 번식 ────────────────────────────────────
 
@@ -474,6 +484,7 @@ class Anaconda(Predator):
         else:
             # 이미지 로드 실패 시 기본 원으로 그리기(부모 클래스)
             super().draw(screen, camera)
+            
     def __repr__(self):
         return (f"<Anaconda '{self.name}' hp={self.hp}/{self.max_hp} "
                 f"state={self._state} hidden={self.hidden} "
@@ -746,7 +757,9 @@ class Crocodile(Predator):
     # ── 업데이트 ─────────────────────────────────
 
     def update(self, dt, game_map, weather, animals):
-        super().update(dt, game_map, weather, animals)
+        # 💡 Predator의 기본 자동 사냥 로직을 건너뛰기 위해
+        #    super().update()(=Predator.update) 대신 Animal.update를 직접 호출한다.
+        Animal.update(self, dt, game_map, weather, animals)
         if not self.alive:
             return
 
@@ -756,7 +769,6 @@ class Crocodile(Predator):
                 if self.try_form_couple(a):
                     break
 
-        self.stop_hunt()
         self._apply_land_drain(dt)
         if self.environment_status != "water" and self._state == self._LURKING:
             self._set_state(self._IDLE)
