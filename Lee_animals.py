@@ -186,6 +186,23 @@ class Capybara(Prey):
         else:
             self.predator_detected = False
             self.stress_level = max(0.0, self.stress_level - 6.0 * dt)
+
+            # 🍎 [추가] 사과 탐색 및 섭취 로직
+            if self.hunger > 30.0 and game_map.apples:
+                closest_apple = min(game_map.apples, key=lambda a: self.distance_to((a.x, a.y)), default=None)
+                if closest_apple and self.distance_to((closest_apple.x, closest_apple.y)) < self.vision_range:
+                    if self.distance_to((closest_apple.x, closest_apple.y)) < 25.0:
+                        print(f"🍎 [{self.name}]가 사과를 오물오물 먹었습니다!")
+                        self.eat(closest_apple.heal_amount)
+                        game_map.apples.remove(closest_apple)
+                        self.target_coord = None
+                    else:
+                        self.target_coord = [closest_apple.x, closest_apple.y]
+                        self.move(dt, self.target_coord, speed_multiplier=0.8)
+                    return # 사과를 향해 갈 때는 기본 배회 로직을 건너뜁니다
+            
+            # Lee_animals.py - Capybara 클래스 update 메서드 하단 배회 부분
+            self.wander_timer -= dt
             
             # Lee_animals.py - Capybara 클래스 update 메서드 하단 배회 부분
             self.wander_timer -= dt
@@ -385,6 +402,19 @@ class Monkey(Prey):
         else:
             # Lee_animals.py - Monkey 클래스 update 메서드 하단 배회 부분
             if not self.on_tree:
+                # 🍎 [추가] 사과 탐색 및 섭취 로직
+                if self.hunger > 30.0 and game_map.apples:
+                    closest_apple = min(game_map.apples, key=lambda a: self.distance_to((a.x, a.y)), default=None)
+                    if closest_apple and self.distance_to((closest_apple.x, closest_apple.y)) < self.vision_range:
+                        if self.distance_to((closest_apple.x, closest_apple.y)) < 25.0:
+                            print(f"🍎 [{self.name}]가 사과를 잽싸게 주워 먹었습니다!")
+                            self.eat(closest_apple.heal_amount)
+                            game_map.apples.remove(closest_apple)
+                            self.target_coord = None
+                        else:
+                            self.target_coord = [closest_apple.x, closest_apple.y]
+                            self.move(dt, self.target_coord, speed_multiplier=0.9)
+                        return
                 self.wander_timer -= dt
                 if self.wander_timer <= 0 or not self.target_coord:
                     self.wander_timer = random.uniform(3.0, 6.0)
@@ -561,6 +591,19 @@ class Parrot(FlyingAnimal, Prey):
                     self.make_alert_sound(animals)
             self.target_coord = None
         else:
+            # 🍎 [추가] 사과 탐색 및 섭취 로직
+            if self.hunger > 30.0 and game_map.apples:
+                closest_apple = min(game_map.apples, key=lambda a: self.distance_to((a.x, a.y)), default=None)
+                if closest_apple and self.distance_to((closest_apple.x, closest_apple.y)) < self.vision_range:
+                    if self.distance_to((closest_apple.x, closest_apple.y)) < 25.0:
+                        print(f"🍎 [{self.name}]가 날아와서 사과를 쪼아 먹었습니다!")
+                        self.eat(closest_apple.heal_amount)
+                        game_map.apples.remove(closest_apple)
+                        self.target_coord = None
+                    else:
+                        self.target_coord = [closest_apple.x, closest_apple.y]
+                        self.move(dt, self.target_coord, speed_multiplier=1.0)
+                    return
             # Lee_animals.py - Parrot 클래스 update 메서드 하단 배회 부분
             self.wander_timer -= dt
             if self.wander_timer <= 0 or not self.target_coord:
