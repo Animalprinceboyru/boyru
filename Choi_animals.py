@@ -355,7 +355,7 @@ class ElectricEel(Predator):
             if getattr(target, 'is_stunned', False):
                 print(f"💥 [{self.name}]이(가) 기절한 {target.name}에게 치명적인 일격을 가합니다!")
                 self.attack(target, base_damage * 2.0)
-                if not target.alive: self.eat(food_value)
+                if not target.alive: self.eat(target.FOOD_VALUE)   # 💡 사냥감 종류별 영양값
                 return True
             else: return super().try_attack(target, base_damage, food_value)
         return False
@@ -518,7 +518,7 @@ class ToxicFrog(Prey):
                     if dist<30.0:
                         print(f"🐸 {self.name}이(가) {a.name}을(를) 잡아먹었습니다!")
                         a.take_damage(999.0, source="toxic_frog_eat", attacker=self) # 💡 attacker 전달로 모기 즉사 성공!
-                        self.eat(15.0)
+                        self.eat(a.FOOD_VALUE)   # 💡 사냥감(모기) 종류별 영양값
                         break
                     elif dist <= 120.0 and self.stamina >= 10.0:
                         self.use_stamina(10.0 * dt)

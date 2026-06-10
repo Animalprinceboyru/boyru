@@ -12,6 +12,40 @@ from Bae import Anaconda, Crocodile, Tarantula
 from kim import Mosquito
 import math
 
+# ════════════════════════════════════════════════
+#  번식 확률 조정판  (둥지 생성 확률, 번식 확률)
+#  - 값은 0.0 ~ 1.0, 모두 초당 1회 판정
+#  - 여기 숫자만 바꾸면 모든 개체(나중에 태어나는 새끼 포함)에 자동 적용됨
+#  - 안 적은 종은 animal.py 기본값(0.8 / 0.9) 사용
+# ════════════════════════════════════════════════
+Anaconda.HOME_BUILD_PROB,    Anaconda.BREED_PROB    = 0.6, 0.4
+Crocodile.HOME_BUILD_PROB,   Crocodile.BREED_PROB   = 0.7, 0.5
+Tarantula.HOME_BUILD_PROB,   Tarantula.BREED_PROB   = 0.8, 0.6
+ElectricEel.HOME_BUILD_PROB, ElectricEel.BREED_PROB = 0.7, 0.5
+ToxicFrog.HOME_BUILD_PROB,   ToxicFrog.BREED_PROB   = 0.8, 0.7
+Rhino.HOME_BUILD_PROB,       Rhino.BREED_PROB       = 0.5, 0.3
+Capybara.HOME_BUILD_PROB,    Capybara.BREED_PROB    = 0.9, 0.8
+Monkey.HOME_BUILD_PROB,      Monkey.BREED_PROB      = 0.85, 0.75
+Parrot.HOME_BUILD_PROB,      Parrot.BREED_PROB      = 0.8, 0.7
+Mosquito.HOME_BUILD_PROB,    Mosquito.BREED_PROB    = 0.95, 0.9
+
+# ════════════════════════════════════════════════
+#  사냥감 종류별 영양값 (잡아먹혔을 때 포식자 배고픔 회복량)
+#  - 사냥 방식과 무관하게, 잡아먹힌 동물의 종류로만 결정됨
+#  - 안 적은 종은 animal.py 기본값(35.0) 사용
+# ════════════════════════════════════════════════
+Capybara.FOOD_VALUE    = 60.0
+Monkey.FOOD_VALUE      = 45.0
+Parrot.FOOD_VALUE      = 30.0
+ToxicFrog.FOOD_VALUE   = 25.0
+Rhino.FOOD_VALUE       = 90.0
+ElectricEel.FOOD_VALUE = 50.0
+Mosquito.FOOD_VALUE    = 8.0
+# 포식자도 다른 포식자에게 잡아먹힐 수 있으니 함께 지정
+Anaconda.FOOD_VALUE    = 70.0
+Crocodile.FOOD_VALUE   = 80.0
+Tarantula.FOOD_VALUE   = 25.0
+
 SCREEN_WIDTH  = 1280
 SCREEN_HEIGHT = 720
 FPS           = 60
