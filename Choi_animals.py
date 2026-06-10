@@ -2,10 +2,9 @@ import pygame
 import random
 import math
 from typing import Tuple, Optional, List
-from animal import Animal, Predator, Egg
+from animal import Animal, Predator, Prey, Egg
 import camera
 from map_system import TileType
-
 
 CHOI_IMAGE_CACHE={}
 
@@ -15,7 +14,8 @@ CHOI_IMAGE_CACHE={}
 class FlyingAnimal(Animal):
     SPECIES_VISION_RANGE: float = 200.0
     SPECIES_VISION_ANGLE: float = 160.0
-    HATCH_TIME: float = 10.0 #일단 flying_animal은 모두 HATCH_TIME 통일해놓음/ 바꾸려면 이 함수 그대로 해당 클래스에 넣으면 됨(HATCH_TIME은 새로 정의)
+    HATCH_TIME: float = 10.0 
+    
     def __init__(self, name: str, coordinate: Tuple[float, float], flying_speed: float = 120.0, **kwargs):
         super().__init__(name, coordinate, **kwargs)
         self.flying_speed = flying_speed
@@ -23,114 +23,72 @@ class FlyingAnimal(Animal):
         self.is_flying = False
     
     def move(self, dt: float, target: Optional[Tuple[float, float]] = None, speed_multiplier: float = 1.0):
-        """기본 move를 오버라이딩하여 비행 상태일 때 자동으로 스피드 버프를 적용합니다."""
         if self.is_flying:
             speed_ratio = self.flying_speed / self.max_speed
             super().move(dt, target, speed_multiplier=speed_ratio * speed_multiplier)
             self.use_stamina(2.0 * dt)
-            
             if self.stamina <= 0:
                 self.is_flying = False
         else:
             super().move(dt, target, speed_multiplier=speed_multiplier)
     
     def take_damage(self, amount: float, source: str = "unknown", attacker: Optional[Animal] = None):
-        """비행 중일 때는 전기뱀장어의 전기 공격만 정상 수치로 피해를 입고, 다른 공격은 회피합니다."""
+        """비행 중일 때는 전기뱀장어의 공격이나 독개구리 즉사 판정만 받고 나머지는 회피"""
         if self.is_flying:
-            if source == "electric_shock" or (attacker and attacker.__class__.__name__ == "ElectricEel"):
-                # 날든 말든 대미지 수치 자체는 가중치 없이 동일하게 받음
-                super().take_damage(amount, source)
+            if source == "electric_shock" or (attacker and attacker.__class__.__name__ == "ElectricEel") or (attacker and attacker.__class__.__name__ == "ToxicFrog"):
+                super().take_damage(amount, source, attacker)
             else:
-                # 전기뱀장어의 공격이 아니면 공중 회피(무시)
                 return
         else:
-            # 지상에 있을 때는 모든 데미지를 정상적으로 받음
-            super().take_damage(amount, source)
+            super().take_damage(amount, source, attacker)
+
     def attack(self, target: Optional[Animal] = None, base_damage: float = 15.0):
-        """날면서 다른 대상을 공격할 때, 나의 비행 속도에 비례하여 타겟에게 더 큰 피해를 입힙니다."""
         if target and target.alive:
             if self.is_flying:
-                # 💡 [핵심] 내가 날고 있을 때: 상대가 받는 대미지 = 기본 대미지 + 내 비행 속도의 15%
                 extra_damage = self.flying_speed * 0.15
                 final_damage = base_damage + extra_damage
-                
-                print(f"🦅 {self.name}이(가) 공중에서 고속({self.flying_speed:.1f})으로 강하하며 "
-                      f"{target.name}에게 가속도가 붙은 강력한 타격({final_damage:.1f})을 입힙니다!")
+                print(f"🦅 {self.name}이(가) 공중에서 고속({self.flying_speed:.1f})으로 강하하며 {target.name}에게 가속도가 붙은 강력한 타격({final_damage:.1f})을 입힙니다!")
                 target.take_damage(final_damage, source="flying_attack", attacker=self)
             else:
-                # 지상에 있을 때: 속도 가중치 없이 기본 데미지만 가함
                 print(f"🦅 {self.name}이(가) 지상에서 부리로 {target.name}을(를) 쪼아 공격({base_damage:.1f})합니다!")
                 target.take_damage(base_damage, source="peck_attack", attacker=self)
-        else:
-            # 타겟이 지정되지 않았을 경우를 대비한 예외 처리
-            super().attack()
+        elif target is not None:
+            super().attack(target, base_damage)
     
     def make_child(self): 
         breed_cost = 20.0
-        # 스태미나 검사
-        if self.stamina < breed_cost or (self.couple and self.couple.stamina < breed_cost):
-            return None
-        
-        # 스태미나 소모
+        if self.stamina < breed_cost or (self.couple and self.couple.stamina < breed_cost): return None
         self.use_stamina(breed_cost)
-        if self.couple:
-            self.couple.use_stamina(breed_cost)
-            
+        if self.couple: self.couple.use_stamina(breed_cost)
         print(f"🥚 {self.name}이(가) 알을 낳았습니다!")
         return Egg(self.coordinate, self, hatch_time=self.HATCH_TIME)
 
     def _spawn_child(self):
-        # 1. 50% 확률로 성별 결정
         child_sex = random.choice(["male", "female"])
         child = type(self)(name=f"{self.name}_child", coordinate=self.coordinate[:], sex=child_sex)
-        
-        # 2. 부모의 능력을 ±10% 오차 범위 내에서 무작위 유전
         child.max_hp = int(self.max_hp * random.uniform(0.9, 1.1))
-        child.hp = child.max_hp  # 태어날 땐 최대 체력
+        child.hp = child.max_hp
         child.max_stamina = self.max_stamina * random.uniform(0.9, 1.1)
         child.max_speed = self.max_speed * random.uniform(0.9, 1.1)
         child.flying_speed = self.flying_speed * random.uniform(0.9, 1.1)
-        
         return child
-    
-
 
     def can_see(self, target: "Animal", game_map) -> bool:
-        """나무 가림막(Canopy)을 무시하고 상공에서 내려다보는 시야"""
-        if not target.alive:
-            return False
-            
-        # 1. 시야 사거리 검사
-        if self.distance_to(target) > self.vision_range:
-            return False
-            
-        # 2. 시야각(FOV) 검사
+        if not target.alive: return False
+        if self.distance_to(target) > self.vision_range: return False
         if self.vision_angle < 360:
             ox, oy = self.coordinate
             tx, ty = target.coordinate
-            
-            # 타겟을 향하는 절대 각도 계산
             target_angle = math.atan2(ty - oy, tx - ox)
-            
-            # 내 바라보는 방향과 타겟 각도의 차이 구하기 (-180도 ~ 180도로 정규화)
             diff = (target_angle - self.facing_angle) % (2 * math.pi)
-            if diff > math.pi:
-                diff -= 2 * math.pi
-                
-            # 내 시야각(vision_angle)의 절반보다 바깥에 있으면 안 보임
-            if abs(diff) > math.radians(self.vision_angle / 2):
-                return False
-                
-        # 3. 나무 장애물 검사 없이 무조건 통과!
+            if diff > math.pi: diff -= 2 * math.pi
+            if abs(diff) > math.radians(self.vision_angle / 2): return False
         return True
 
     def update(self, dt: float, game_map, weather, animals: List[Animal]):
         super().update(dt, game_map, weather, animals)
-        if not self.alive or self.is_stunned:
-            return
-            
-        if not self.is_flying and self.stamina > 20:
-            self.is_flying = True
+        if not self.alive or self.is_stunned: return
+        if not self.is_flying and self.stamina > 20: self.is_flying = True
 
 # ==========================================
 # 2. 코뿔소 (Rhino)
@@ -139,160 +97,88 @@ class Rhino(Animal):
     SPECIES_VISION_RANGE: float = 400.0
     SPECIES_VISION_ANGLE: float = 100.0
     minimap_color = (150, 150, 150)
+    
     def __init__(self, name: str, coordinate: Tuple[float, float], crash_power: float = 50.0, **kwargs):
         super().__init__(name, coordinate, **kwargs)
         self.crash_power = crash_power
         self.max_speed = 90.0
         self.size=random.uniform(100,200)
-        self._is_behind_tree = False # 💡 나무 뒤 숨김 효과 플래그
         self.max_hp=600
         self.max_speed=80
         
-        # 돌진 상태 관리를 위한 변수
         self.is_charging = False
         self.charge_target_tree = None
         
-        # 💡 1. 여기서 코뿔소 전용 이미지를 설정
-        self.image_path = "rhino.png"  # 코뿔소 이미지 파일명
+        self.image_path = "rhino.png" 
         self.image = None
-        
-        # 이미지가 캐시에 없으면 최초 1회 로드
         if self.image_path not in CHOI_IMAGE_CACHE:
-            try:
-                loaded_img = pygame.image.load(self.image_path).convert_alpha()
-                CHOI_IMAGE_CACHE[self.image_path] = loaded_img
-            except Exception as e:
-                print(f"⚠️ {name} 이미지 로드 실패: {e}")
-                # 💡 [핵심] 실패하더라도 딕셔너리에 None을 넣어줘야함
-                CHOI_IMAGE_CACHE[self.image_path] = None
+            try: CHOI_IMAGE_CACHE[self.image_path] = pygame.image.load(self.image_path).convert_alpha()
+            except Exception: CHOI_IMAGE_CACHE[self.image_path] = None
+            
         orig_img = CHOI_IMAGE_CACHE[self.image_path]
         if orig_img is not None:
-            orig_w, orig_h = orig_img.get_size() # 원본 이미지의 가로, 세로 픽셀
-                
-            # 동물의 크기(size)를 기준으로 최대 렌더링 크기 설정
-            target_max_size = int(self.size * 2.5)
-                
-            # 가로와 세로 중 더 긴 쪽을 기준으로 축소/확대 비율(scale_factor)을 계산
-            scale_factor = target_max_size / max(orig_w, orig_h)
-                
-            # 구한 비율을 가로, 세로에 똑같이 곱해주어 비율 유지
-            new_w = int(orig_w * scale_factor)
-            new_h = int(orig_h * scale_factor)
-                
-            # 새로운 가로, 세로 크기로 스케일링
-            self.image = pygame.transform.scale(orig_img, (new_w, new_h))
-        else:
-            self.image = None # 이미지가 없으면 None으로 유지 (draw 메서드에서 부모의 원형 그리기로 대체됨)
+            orig_w, orig_h = orig_img.get_size()
+            scale_factor = int(self.size * 2.5) / max(orig_w, orig_h)
+            self.image = pygame.transform.scale(orig_img, (int(orig_w * scale_factor), int(orig_h * scale_factor)))
 
-    # 💡 2. 부모(animal.py)의 draw 함수 오버라이딩
     def draw(self, screen: pygame.Surface, camera):
-        if not self.alive:
-            return
-        
-        # 1. 화면 좌표를 먼저 계산합니다.
+        if not self.alive: return
         sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
-    
-        # 💡 [최적화 핵심] 동물이 화면을 완전히 벗어났다면 아예 연산(스케일, 회전)을 하지 않고 종료합니다.
-        # 여유 공간(margin)을 약 100픽셀 정도 두어 자연스럽게 사라지도록 합니다.
         margin = 100
-        if not (-margin < sx < camera.screen_w + margin and -margin < sy < camera.screen_h + margin):
-            return
+        if not (-margin < sx < camera.screen_w + margin and -margin < sy < camera.screen_h + margin): return
 
         if self.image:
-            sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
-            
-            # 💡 [핵심 최적화] self 대신 클래스(종류) 전체가 공유하는 캐시 사용!
-            if not hasattr(self.__class__, '_shared_img_cache'):
-                self.__class__._shared_img_cache = {}
-                
+            if not hasattr(self.__class__, '_shared_img_cache'): self.__class__._shared_img_cache = {}
             zoom_key = round(camera.zoom, 2)
             angle_deg = math.degrees(-self.facing_angle)
             angle_key = int(angle_deg / 5) * 5 
-            
-            # 💡 투명도(은신 상태)까지 포함해서 캐시 키 생성 (유령 버그 방지)
             is_hidden = getattr(self, 'is_hiding', False)
             cache_key = (zoom_key, angle_key, is_hidden)
-            
-            # 클래스 캐시에 이미지가 없다면 한 번만 연산
             if cache_key not in self.__class__._shared_img_cache:
-                new_w = int(self.image.get_width() * camera.zoom)
-                new_h = int(self.image.get_height() * camera.zoom)
-                
+                new_w, new_h = int(self.image.get_width() * camera.zoom), int(self.image.get_height() * camera.zoom)
                 scaled = pygame.transform.scale(self.image, (new_w, new_h))
-                # (동물별 고유 반전이나 기울기 코드가 있다면 여기에 적용)
-                
                 final_rotated = pygame.transform.rotate(scaled, angle_key)
-                
-                # 숨은 상태용 캐시라면 투명도를 깎아서 저장
-                if is_hidden:
-                    final_rotated.set_alpha(110)
-                
+                if is_hidden: final_rotated.set_alpha(110)
                 self.__class__._shared_img_cache[cache_key] = final_rotated
                 
-            # 🚀 모든 같은 종의 동물들이 이 이미지 하나를 공유해서 사용!
             final_image = self.__class__._shared_img_cache[cache_key]
             rect = final_image.get_rect(center=(sx, sy))
             screen.blit(final_image, rect)
-                
-            # 체력바 렌더링 (기존 동일)
             hp_ratio = self.hp / self.max_hp
-            bar_w = 30 * camera.zoom
-            bar_h = 4 * camera.zoom
+            bar_w, bar_h = 30 * camera.zoom, 4 * camera.zoom
             new_h = int(self.image.get_height() * camera.zoom)
             pygame.draw.rect(screen, (220, 60, 60), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w, bar_h))
             pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w * hp_ratio, bar_h))
-        else:
-            super().draw(screen,camera)
+        else: super().draw(screen,camera)
 
     def make_child(self):
         breed_cost = 40.0
-        # 스태미나 검사
-        if self.stamina < breed_cost or (self.couple and self.couple.stamina < breed_cost):
-            return None
-            
-        # 스태미나 소모
+        if self.stamina < breed_cost or (self.couple and self.couple.stamina < breed_cost): return None
         self.use_stamina(breed_cost)
-        if self.couple:
-            self.couple.use_stamina(breed_cost)
-
-        # 1. 성별 결정
+        if self.couple: self.couple.use_stamina(breed_cost)
         child_sex = random.choice(["male", "female"])
         child = type(self)(name=f"{self.name}_child", coordinate=self.coordinate[:], sex=child_sex)
-        
-        # 2. 유전 및 돌연변이 (코뿔소는 돌진 파워도 유전됨)
         child.max_hp = int(self.max_hp * random.uniform(0.9, 1.1))
         child.hp = child.max_hp
         child.max_stamina = self.max_stamina * random.uniform(0.9, 1.1)
         child.max_speed = self.max_speed * random.uniform(0.9, 1.1)
         child.crash_power = self.crash_power * random.uniform(0.9, 1.1)
-        
         print(f"🦏 {self.name}이(가) 건강한 새끼를 낳았습니다!")
         return child
     
     def start_charge(self, attacker: Animal):
-        """공격자를 향하는 직선 방향으로 무작정 돌진을 시작합니다."""
         if not self.is_charging and self.use_stamina(30.0):
             self.is_charging = True
             self.charge_attacker = attacker
-            
-            #현재 포식자의 위치를 돌진 목표 지점으로 설정
-            self.charge_target_coord = (
-                attacker.coordinate[0],
-                attacker.coordinate[1]
-            )
-            
+            self.charge_target_coord = (attacker.coordinate[0], attacker.coordinate[1])
             print(f"🦏 🔥 [{self.name}]가 치명상을 입고 격노하여 {attacker.name}이(가) 있던 위치로 맹렬히 돌진합니다!!")
 
     def take_damage(self, amount: float, source: str = "unknown", attacker: Optional[Animal] = None):
-        super().take_damage(amount, source)
-        
-        # 체력이 35% 이하로 떨어지고 복수할 공격자가 존재할 때 격노 발동
+        super().take_damage(amount, source, attacker)
         if self.alive and self.hp <= self.max_hp * 0.35 and attacker and attacker.alive:
-            if not self.is_charging:
-                self.start_charge(attacker)
+            if not self.is_charging: self.start_charge(attacker)
 
     def _stop_charge(self):
-        """돌진 상태를 해제하고 멈춥니다."""
         self.is_charging = False
         self.charge_target_coord = None
         self.charge_attacker = None
@@ -300,70 +186,49 @@ class Rhino(Animal):
 
     def update(self, dt: float, game_map, weather, animals: List[Animal]):
         super().update(dt, game_map, weather, animals)
-        
-        if not self.alive or self.is_stunned:
-            return
+        if not self.alive or self.is_stunned: return
 
-        # 💡 [핵심 구현] 나무 뒤 X-ray 효과를 위한 충돌 판정
-        tree = game_map.get_tree_at_pixel(self.coordinate[0], self.coordinate[1])
-        self._is_behind_tree = (tree is not None and self.coordinate[1] < tree.coordinate[1])
-
-        # ── 돌진 상태 업데이트 ──
         if self.is_charging and self.charge_target_coord:
-            # 1. 목표 지점(연장선 끝)을 향해 2.5배속 이동
             self.move(dt, self.charge_target_coord, speed_multiplier=25/8)
-
-            # 2. 돌진 경로 상에 포식자가 있는지 충돌 판정
             if self.charge_attacker and self.charge_attacker.alive:
-                if self.distance_to(self.charge_attacker) <= 30.0:  # 충돌 반경 이내
+                if self.distance_to(self.charge_attacker) <= 30.0:
                     print(f"💥 🦏 [{self.name}]의 초강력 박치기가 경로 상에 있던 {self.charge_attacker.name}에게 적중했습니다!")
-                    self.charge_attacker.take_damage(self.crash_power, source="rhino_crash")
+                    self.charge_attacker.take_damage(self.crash_power, source="rhino_crash", attacker=self)
                     self._stop_charge()
                     return
-
-            # 3. 돌진 경로 상에 나무가 있는지 충돌 판정 (현재 내 발밑 좌표 기준)
             tree = game_map.get_tree_at_pixel(self.coordinate[0], self.coordinate[1])
             if tree and not tree.broken:
                 print(f"💥 쾅! [{self.name}]가 돌진 중 나무를 들이받아 부쉈습니다!")
                 game_map.break_tree(tree)
-                
-                # 나무 위 원숭이 추락 처리
                 for animal in animals:
                     if type(animal).__name__ == "Monkey" and getattr(animal, 'on_tree', False):
                         if self.distance_to(animal) < 60.0:
                             animal.on_tree = False
                             animal.current_tree = None
-                            if hasattr(animal, 'apply_stun'):
-                                animal.apply_stun(2.0)
+                            if hasattr(animal, 'apply_stun'): animal.apply_stun(2.0)
                             print(f"쿵! 나무가 부서져 {animal.name}가 땅으로 떨어졌습니다!")
-                
-                # 나무를 부순 직후에는 충격으로 돌진 멈춤
                 self._stop_charge()
                 return
 
-            # 4. 연장선 끝(목표 좌표)에 거의 도달했다면(아무것도 못 박고 허공에 돌진 끝남)
-            dist_to_target = math.hypot(self.coordinate[0] - self.charge_target_coord[0], 
-                                        self.coordinate[1] - self.charge_target_coord[1])
-            if dist_to_target < 10.0:
-                self._stop_charge()
+            dist_to_target = math.hypot(self.coordinate[0] - self.charge_target_coord[0], self.coordinate[1] - self.charge_target_coord[1])
+            if dist_to_target < 10.0: self._stop_charge()
         
-        # Choi_animals.py - Rhino 클래스의 update 메서드 하단
         if not getattr(self, 'is_hunting', False) and not getattr(self, 'is_fleeing', False):
+            # 💡 [추가] 집 찾기 로직
+            if self.try_return_home(dt):
+                self.target_coord = None
+                return
+                
             if not getattr(self, 'target_coord', None):
                 if random.random() < 0.5: 
                     rx = self.coordinate[0] + random.uniform(-2000.0, 2000.0)
                     ry = self.coordinate[1] + random.uniform(-2000.0, 2000.0)
-                    # 맵 밖으로 벗어나지 않게 자르기 (50픽셀 여유)
                     rx = max(50.0, min(float(game_map.pixel_width - 50.0), rx))
                     ry = max(50.0, min(float(game_map.pixel_height - 50.0), ry))
                     self.target_coord = [rx, ry]
-            
             if getattr(self, 'target_coord', None):
                 self.move(dt, target=self.target_coord, speed_multiplier=0.5) 
-                if self.distance_to(self.target_coord) < 15.0:
-                    self.target_coord = None
-        
-
+                if self.distance_to(self.target_coord) < 15.0: self.target_coord = None
 
 
 # ==========================================
@@ -374,521 +239,316 @@ class ElectricEel(Predator):
     SPECIES_VISION_ANGLE: float = 360.0
     minimap_color = (0, 255, 255)
     HUNT_TARGETS={"Capybara","Monkey"}
+    
     def __init__(self, name: str, coordinate: Tuple[float, float], electric_power: float = 30.0, **kwargs):
         super().__init__(name, coordinate, **kwargs)
         self.electric_power = electric_power
         self.max_speed = 110.0
         self.size=random.uniform(80,140)
         self.max_hp=150
-        self._is_behind_tree = False # 💡 나무 뒤 숨김 효과 플래그
         
-        # 💡 1. 여기서 뱀장어 전용 이미지를 설정
-        self.image_path = "eel.png"  # 뱀장어 이미지 파일명
+        self.image_path = "eel.png" 
         self.image = None
-        
-        # 이미지가 캐시에 없으면 최초 1회 로드
         if self.image_path not in CHOI_IMAGE_CACHE:
-            try:
-                loaded_img = pygame.image.load(self.image_path).convert_alpha()
-                CHOI_IMAGE_CACHE[self.image_path] = loaded_img
-            except Exception as e:
-                print(f"⚠️ {name} 이미지 로드 실패: {e}")
-                # 💡 [핵심] 실패하더라도 딕셔너리에 None을 넣어줘야함
-                CHOI_IMAGE_CACHE[self.image_path] = None
+            try: CHOI_IMAGE_CACHE[self.image_path] = pygame.image.load(self.image_path).convert_alpha()
+            except Exception: CHOI_IMAGE_CACHE[self.image_path] = None
         orig_img = CHOI_IMAGE_CACHE[self.image_path]
         if orig_img is not None:
-            orig_w, orig_h = orig_img.get_size() # 원본 이미지의 가로, 세로 픽셀
-                
-            # 동물의 크기(size)를 기준으로 최대 렌더링 크기 설정
-            target_max_size = int(self.size * 2.5)
-                
-            # 가로와 세로 중 더 긴 쪽을 기준으로 축소/확대 비율(scale_factor)을 계산
-            scale_factor = target_max_size / max(orig_w, orig_h)
-                
-            # 구한 비율을 가로, 세로에 똑같이 곱해주어 비율 유지
-            new_w = int(orig_w * scale_factor)
-            new_h = int(orig_h * scale_factor)
-                
-            # 새로운 가로, 세로 크기로 스케일링
-            self.image = pygame.transform.scale(orig_img, (new_w, new_h))
-        else:
-            self.image = None # 이미지가 없으면 None으로 유지 (draw 메서드에서 부모의 원형 그리기로 대체됨)
+            orig_w, orig_h = orig_img.get_size()
+            scale_factor = int(self.size * 2.5) / max(orig_w, orig_h)
+            self.image = pygame.transform.scale(orig_img, (int(orig_w * scale_factor), int(orig_h * scale_factor)))
 
     def draw(self, screen: pygame.Surface, camera):
-        if not self.alive:
-            return
-        
-        # 1. 화면 좌표를 먼저 계산합니다.
+        if not self.alive: return
         sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
-        
-        # 💡 [최적화 핵심] 동물이 화면을 완전히 벗어났다면 아예 연산(스케일, 회전)을 하지 않고 종료합니다.
-        # 여유 공간(margin)을 약 100픽셀 정도 두어 자연스럽게 사라지도록 합니다.
         margin = 100
-        if not (-margin < sx < camera.screen_w + margin and -margin < sy < camera.screen_h + margin):
-            return
+        if not (-margin < sx < camera.screen_w + margin and -margin < sy < camera.screen_h + margin): return
 
         if self.image:
-            sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
-            
-           # 💡 [핵심 최적화] self 대신 클래스(종류) 전체가 공유하는 캐시 사용!
-            if not hasattr(self.__class__, '_shared_img_cache'):
-                self.__class__._shared_img_cache = {}
-                
+            if not hasattr(self.__class__, '_shared_img_cache'): self.__class__._shared_img_cache = {}
             zoom_key = round(camera.zoom, 2)
             angle_deg = math.degrees(-self.facing_angle)
             angle_key = int(angle_deg / 5) * 5 
-            
-            # 💡 투명도(은신 상태)까지 포함해서 캐시 키 생성 (유령 버그 방지)
             is_hidden = getattr(self, 'is_hiding', False)
             cache_key = (zoom_key, angle_key, is_hidden)
-            
-            # 클래스 캐시에 이미지가 없다면 한 번만 연산
             if cache_key not in self.__class__._shared_img_cache:
-                new_w = int(self.image.get_width() * camera.zoom)
-                new_h = int(self.image.get_height() * camera.zoom)
-                
+                new_w, new_h = int(self.image.get_width() * camera.zoom), int(self.image.get_height() * camera.zoom)
                 scaled = pygame.transform.scale(self.image, (new_w, new_h))
-                # (동물별 고유 반전이나 기울기 코드가 있다면 여기에 적용)
-                
                 final_rotated = pygame.transform.rotate(scaled, angle_key)
-                
-                # 숨은 상태용 캐시라면 투명도를 깎아서 저장
-                if is_hidden:
-                    final_rotated.set_alpha(110)
-                
+                if is_hidden: final_rotated.set_alpha(110)
                 self.__class__._shared_img_cache[cache_key] = final_rotated
-                
-            # 🚀 모든 같은 종의 동물들이 이 이미지 하나를 공유해서 사용!
             final_image = self.__class__._shared_img_cache[cache_key]
             rect = final_image.get_rect(center=(sx, sy))
             screen.blit(final_image, rect)
-                
-            # 체력바 렌더링 (기존 동일)
             hp_ratio = self.hp / self.max_hp
-            bar_w = 30 * camera.zoom
-            bar_h = 4 * camera.zoom
+            bar_w, bar_h = 30 * camera.zoom, 4 * camera.zoom
             new_h = int(self.image.get_height() * camera.zoom)
             pygame.draw.rect(screen, (220, 60, 60), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w, bar_h))
             pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w * hp_ratio, bar_h))
-        else:
-            # 이미지 로드 실패 시 기본 원으로 그리기(부모 클래스)
-            super().draw(screen, camera)
+        else: super().draw(screen, camera)
     
     def move(self, dt: float, target: Optional[Tuple[float, float]] = None, speed_multiplier: float = 1.0):
-        """environment_status를 이용해 물에 있는지 판단하고 속도를 조정합니다."""
         if getattr(self, 'environment_status', '') == 'water':
-            # 물속에서는 고속 수영 버프 (1.6배)
             super().move(dt, target, speed_multiplier=speed_multiplier * 1.6)
         else:
-            # 육지 위로 올라왔을 때는 느리게 기어가는 패널티 (0.4배)
             super().move(dt, target, speed_multiplier=speed_multiplier * 0.4)
     
     def make_child(self):
         breed_cost = 25.0
-        if self.stamina < breed_cost or (self.couple and self.couple.stamina < breed_cost):
-            return None
-            
+        if self.stamina < breed_cost or (self.couple and self.couple.stamina < breed_cost): return None
         self.use_stamina(breed_cost)
-        if self.couple:
-            self.couple.use_stamina(breed_cost)
-            
+        if self.couple: self.couple.use_stamina(breed_cost)
         print(f"🥚 {self.name}이(가) 물속에 알을 낳았습니다!")
         return Egg(self.coordinate, self, hatch_time=10.0)
 
     def _spawn_child(self):
         child_sex = random.choice(["male", "female"])
         child = type(self)(name=f"{self.name}_child", coordinate=self.coordinate[:], sex=child_sex)
-        
         child.max_hp = int(self.max_hp * random.uniform(0.9, 1.1))
         child.hp = child.max_hp
         child.max_stamina = self.max_stamina * random.uniform(0.9, 1.1)
         child.max_speed = self.max_speed * random.uniform(0.9, 1.1)
         child.electric_power = self.electric_power * random.uniform(0.9, 1.1)
-        
         return child
 
     def swim(self, dt: float, target: Optional[Tuple[float, float]] = None):
-        """수중 이동: 물가나 물속에서 속도 증가 버프를 받습니다."""
         self.move(dt, target, speed_multiplier=1.4)
 
-    # [기능 1] 날씨 시스템 시너지 (weather 매개변수 추가)
     def electric_attack(self, target: Animal, animals: List[Animal], weather=None):
-        """전기뱀장어의 특수 공격 (수중 광역 데미지 및 날씨 시너지 포함)"""
         base_damage = 30.0
-        aoe_radius = 150.0      # 전류가 닿는 기본 최대 반경
-        max_aoe_damage = 25.0   # 중심부 기본 최대 광역 데미지
-        
-        # ⛈️ 날씨 시너지: 비나 폭풍우가 내릴 때 위력과 범위 대폭 증가
+        aoe_radius = 150.0 
+        max_aoe_damage = 25.0
         is_raining = False
         if weather and hasattr(weather, 'current'):
-            # WeatherType Enum 호환성을 위해 문자열 확인
-            if getattr(weather.current, 'name', '') in ["RAINY", "STORM"]:
-                is_raining = True
+            if getattr(weather.current, 'name', '') in ["RAINY", "STORM"]: is_raining = True
 
         if is_raining:
-            base_damage *= 1.5
-            aoe_radius *= 2.0
-            max_aoe_damage *= 1.5
+            base_damage *= 1.5; aoe_radius *= 2.0; max_aoe_damage *= 1.5
             print(f"⛈️ 궂은 날씨로 인해 [{self.name}]의 전기 공격 반경이 2배로 넓어집니다!")
 
-        # 1. 직접 공격 대상에게 데미지 및 기절 부여
-        target.take_damage(base_damage, source=self.name)
+        target.take_damage(base_damage, source=self.name, attacker=self)
         target.apply_stun(duration=2.5) 
         
-        # 2. 자신이 물 속에 있을 경우 주변에 전류 방출
         if self.environment_status == "water":
             for a in animals:
-                # 자신과 직접 타겟 제외, 살아있고 물 속에 있는 동물만 필터링
                 if a is not self and a is not target and a.alive and getattr(a, 'environment_status', 'land') == "water":
                     dist = self.distance_to(a)
                     if dist <= aoe_radius:
-                        # 거리에 반비례하는 데미지 계산
                         dist = max(1.0, dist) 
                         shock_damage = max_aoe_damage * (1.0 - (dist / aoe_radius))
-                        
                         if shock_damage > 0:
-                            a.take_damage(shock_damage, source="electric_shock")
-                            a.apply_stun(duration=1.5) # 광역 감전 시에도 짧게 기절
+                            a.take_damage(shock_damage, source="electric_shock", attacker=self)
+                            a.apply_stun(duration=1.5)
                             print(f"⚡ [{a.name}]이(가) 물을 타고 흐른 전기에 감전되었습니다! (피해량: {shock_damage:.1f})")
 
-    # [기능 2] 방어적 방전 (Defensive Discharge)
     def take_damage(self, amount: float, source: str = "unknown", attacker: Optional[Animal] = None):
-        """피격 시 공격자에게 전기를 방출하여 반격"""
-        # 부모 클래스의 원래 데미지 받는 처리 먼저 실행
-        super().take_damage(amount, source)
-        
-        # 공격자가 있고, 내가 아직 살아있으며, 스태미나가 충분하다면 반격!
+        super().take_damage(amount, source, attacker)
         if attacker and attacker.alive and self.alive and self.use_stamina(10.0):
             print(f"⚡ [{self.name}]이(가) 자신을 공격한 {attacker.name}에게 방어적 방전을 일으킵니다!")
-            attacker.take_damage(15.0, source="defensive_shock")
+            attacker.take_damage(15.0, source="defensive_shock", attacker=self)
             attacker.apply_stun(duration=2.0)
 
-    # 기절 연계 포식 시스템 (Execution)
     def try_attack(self, target: Animal, base_damage: float = 20.0, food_value: float = 60.0) -> bool:
-        """기절한 적에게는 100% 명중 및 2배 데미지 (처형)"""
         if not target.alive:
-            self.stop_hunt()
-            return False
-            
+            self.stop_hunt(); return False
         if self.distance_to(target) <= self.attack_range:
-            # 타겟이 기절(Stun) 상태인지 확인
             if getattr(target, 'is_stunned', False):
                 print(f"💥 [{self.name}]이(가) 기절한 {target.name}에게 치명적인 일격을 가합니다!")
-                # 기절 상태면 Predator의 확률 계산을 무시하고 무조건 명중, 데미지 2배
                 self.attack(target, base_damage * 2.0)
-                if not target.alive:
-                    self.eat(food_value)
+                if not target.alive: self.eat(food_value)
                 return True
-            else:
-                # 기절 상태가 아니면 원래 Predator의 확률 기반 공격 로직 따름
-                return super().try_attack(target, base_damage, food_value)
+            else: return super().try_attack(target, base_damage, food_value)
         return False
     
     def check_competition(self, animals: List[Animal]):
-        """사냥 타겟이 같은 경쟁자(악어)가 있을 경우, 타겟을 서로로 변경해 다투도록 합니다."""
-        # 자신이 사냥 중이 아니거나 타겟이 없으면 종료
-        if not getattr(self, 'is_hunting', False) or self.hunting_target is None:
-            return
-            
-        # 이미 악어와 싸우고 있는 상태라면 중복 실행 방지
-        if self.hunting_target.__class__.__name__ == "Crocodile":
-            return
+        if not getattr(self, 'is_hunting', False) or self.hunting_target is None: return
+        if self.hunting_target.__class__.__name__ == "Crocodile": return
 
         for a in animals:
-            if a is self or not a.alive:
-                continue
-
-            # 주변의 동물이 악어(Crocodile)인지 확인
+            if a is self or not a.alive: continue
             if a.__class__.__name__ == "Crocodile":
-                croc_state = getattr(a, '_state', '')
-                croc_target = getattr(a, '_target', None)
-                
-                # 악어도 사냥(돌진, 추격 등) 중이고, 타겟이 전기뱀장어의 타겟과 같다면
-                if croc_state in ("rushing", "chasing", "death_roll") and croc_target is self.hunting_target:
-                    # 일정 거리(예: 250.0 픽셀) 이내로 가까워졌을 때 영역 다툼 발동
+                croc_state, croc_target = getattr(a, '_state', ''), getattr(a, '_target', None)
+                if croc_state in ("rushing", "chasing", "death_roll"):
                     if self.distance_to(a) <= 250.0:
                         print(f"⚡🐊 [영역 다툼] {self.name}와 {a.name}가 {self.hunting_target.name}을(를) 두고 격돌합니다!")
-                        
-                        # 1. 전기뱀장어의 사냥 타겟을 악어로 변경
                         self.hunting_target = a
-                        
-                        # 2. 악어의 상태를 '추격'으로 강제 변경하고 타겟을 전기뱀장어로 지정
                         a._set_state("chasing", self)
                         break
 
     def update(self, dt: float, game_map, weather, animals: List[Animal]):
         super().update(dt, game_map, weather, animals)
-
-        if not self.alive or self.is_stunned:
-            return
-            
-        # 💡 [핵심 구현] 나무 뒤 X-ray 효과를 위한 충돌 판정
-        tree = game_map.get_tree_at_pixel(self.coordinate[0], self.coordinate[1])
-        self._is_behind_tree = (tree is not None and self.coordinate[1] < tree.coordinate[1])
+        if not self.alive or self.is_stunned: return
 
         self.check_competition(animals)
-        # 사냥(Hunting) 중 타겟에 접근 시 일정 확률로 전기 공격
         if self.is_hunting and self.hunting_target:
             if self.distance_to(self.hunting_target) <= self.attack_range + 20:
-                if random.random() < 0.05: 
-                    # 수정됨: weather 객체도 함께 넘겨주어 날씨 시너지 확인
-                    self.electric_attack(self.hunting_target, animals, weather)
+                if random.random() < 0.05: self.electric_attack(self.hunting_target, animals, weather)
         
         if not getattr(self, 'is_hunting', False) and not getattr(self, 'is_fleeing', False):
+            # 💡 [추가] 집 찾기 로직
+            if self.try_return_home(dt):
+                self.target_coord = None
+                return
+                
             if not getattr(self, 'target_coord', None):
                 if random.random() < 0.05:
-                    cx = int(self.coordinate[0] // 32)
-                    cy = int(self.coordinate[1] // 32)
+                    cx, cy = int(self.coordinate[0] // 32), int(self.coordinate[1] // 32)
                     water_tiles = []
                     for dy in range(-15, 16):
                         for dx in range(-15, 16):
                             tx, ty = cx + dx, cy + dy
-                            # 맵 인덱스 에러 방지
                             if 0 <= tx < game_map.map_width and 0 <= ty < game_map.map_height:
                                 tile = game_map.get_tile(tx, ty)
-                                if tile in (TileType.WATER, TileType.DEEP_WATER):
-                                    water_tiles.append((tx, ty))
+                                if tile in (TileType.WATER, TileType.DEEP_WATER): water_tiles.append((tx, ty))
 
                     if water_tiles:
                         chosen_tx, chosen_ty = random.choice(water_tiles)
-                        target_x = chosen_tx * 32 + 16.0
-                        target_y = chosen_ty * 32 + 16.0
+                        target_x, target_y = chosen_tx * 32 + 16.0, chosen_ty * 32 + 16.0
                     else:
-                        target_x = self.coordinate[0] + random.uniform(-300.0, 300.0)
-                        target_y = self.coordinate[1] + random.uniform(-300.0, 300.0)
+                        target_x, target_y = self.coordinate[0] + random.uniform(-300.0, 300.0), self.coordinate[1] + random.uniform(-300.0, 300.0)
                     
-                    # 맵 이탈 방지
                     target_x = max(50.0, min(float(game_map.pixel_width - 50.0), target_x))
                     target_y = max(50.0, min(float(game_map.pixel_height - 50.0), target_y))
                     self.target_coord = [target_x, target_y]
                         
             if getattr(self, 'target_coord', None):
-                # 수영 부스트 타이머 감소
-                if getattr(self, 'swim_boost_timer', 0) > 0:
-                    self.swim_boost_timer -= dt
-                
-                # 물속이고 스태미나가 충분할 때 확률적으로 고속 수영 발동
-                if (self.environment_status == "water" and 
-                    self.stamina >= 30.0 and 
-                    getattr(self, 'swim_boost_timer', 0) <= 0 and 
-                    random.random() < 0.02):
-                    self.use_stamina(5.0)
-                    self.swim_boost_timer = 1.5 # 1.5초 동안 수영 부스트
-                
-                if getattr(self, 'swim_boost_timer', 0) > 0:
-                    self.swim(dt, target=self.target_coord) # 속도 증가 메서드 호출
-                else:
-                    self.move(dt, target=self.target_coord)
-                    
-                if self.distance_to(self.target_coord) < 15.0:
-                    self.target_coord = None
+                if getattr(self, 'swim_boost_timer', 0) > 0: self.swim_boost_timer -= dt
+                if (self.environment_status == "water" and self.stamina >= 30.0 and getattr(self, 'swim_boost_timer', 0) <= 0 and random.random() < 0.02):
+                    self.use_stamina(5.0); self.swim_boost_timer = 1.5
+                if getattr(self, 'swim_boost_timer', 0) > 0: self.swim(dt, target=self.target_coord)
+                else: self.move(dt, target=self.target_coord)
+                if self.distance_to(self.target_coord) < 15.0: self.target_coord = None
 
 
 # ==========================================
 # 4. 독개구리 (Toxic Frog)
 # ==========================================
-class ToxicFrog(Animal):
+class ToxicFrog(Prey):
     SPECIES_VISION_RANGE: float = 500.0
     SPECIES_VISION_ANGLE: float = 180.0
-    inimap_color = (144, 238, 144)
+    minimap_color = (144, 238, 144) # 오타 수정
     HATCH_TIME: float = 10.0
+    
     def __init__(self, name: str, coordinate: Tuple[float, float], poison_amount: float = 4.0, **kwargs):
-        super().__init__(name, coordinate, **kwargs)
+        super().__init__(name, coordinate, danger_range=150.0, **kwargs) # 💡 Prey 생성자 호환성 맞춤
         self.poison_amount = poison_amount
         self.max_speed = 50.0
         self.size = random.uniform(30,60)
         self.max_hp=50
-        self._is_behind_tree = False # 💡 나무 뒤 숨김 효과 플래그
 
-        # 💡 1. 여기서 독개구리 전용 이미지를 설정
-        self.image_path = "frog.png"  # 독개구리 이미지 파일명
+        self.image_path = "frog.png"
         self.image = None
-        
-        # 이미지가 캐시에 없으면 최초 1회 로드
         if self.image_path not in CHOI_IMAGE_CACHE:
-            try:
-                loaded_img = pygame.image.load(self.image_path).convert_alpha()
-                CHOI_IMAGE_CACHE[self.image_path] = loaded_img
-            except Exception as e:
-                print(f"⚠️ {name} 이미지 로드 실패: {e}")
-                # 💡 [핵심] 실패하더라도 딕셔너리에 None을 넣어줘야함
-                CHOI_IMAGE_CACHE[self.image_path] = None
+            try: CHOI_IMAGE_CACHE[self.image_path] = pygame.image.load(self.image_path).convert_alpha()
+            except Exception: CHOI_IMAGE_CACHE[self.image_path] = None
         orig_img = CHOI_IMAGE_CACHE[self.image_path]
         if orig_img is not None:
-            orig_w, orig_h = orig_img.get_size() # 원본 이미지의 가로, 세로 픽셀
-                
-            # 동물의 크기(size)를 기준으로 최대 렌더링 크기 설정
-            target_max_size = int(self.size * 2.5)
-                
-            # 가로와 세로 중 더 긴 쪽을 기준으로 축소/확대 비율(scale_factor)을 계산
-            scale_factor = target_max_size / max(orig_w, orig_h)
-                
-            # 구한 비율을 가로, 세로에 똑같이 곱해주어 비율 유지
-            new_w = int(orig_w * scale_factor)
-            new_h = int(orig_h * scale_factor)
-                
-            # 새로운 가로, 세로 크기로 스케일링
-            self.image = pygame.transform.scale(orig_img, (new_w, new_h))
-        else:
-            self.image = None # 이미지가 없으면 None으로 유지 (draw 메서드에서 부모의 원형 그리기로 대체됨)
+            orig_w, orig_h = orig_img.get_size()
+            scale_factor = int(self.size * 2.5) / max(orig_w, orig_h)
+            self.image = pygame.transform.scale(orig_img, (int(orig_w * scale_factor), int(orig_h * scale_factor)))
     
     def draw(self, screen: pygame.Surface, camera):
-        if not self.alive:
-            return
-        
-        # 1. 화면 좌표를 먼저 계산합니다.
+        if not self.alive: return
         sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
-        
-        # 💡 [최적화 핵심] 동물이 화면을 완전히 벗어났다면 아예 연산(스케일, 회전)을 하지 않고 종료합니다.
-        # 여유 공간(margin)을 약 100픽셀 정도 두어 자연스럽게 사라지도록 합니다.
         margin = 100
-        if not (-margin < sx < camera.screen_w + margin and -margin < sy < camera.screen_h + margin):
-            return
+        if not (-margin < sx < camera.screen_w + margin and -margin < sy < camera.screen_h + margin): return
 
         if self.image:
-            sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
-            
-            # 💡 [핵심 최적화] self 대신 클래스(종류) 전체가 공유하는 캐시 사용!
-            if not hasattr(self.__class__, '_shared_img_cache'):
-                self.__class__._shared_img_cache = {}
-                
+            if not hasattr(self.__class__, '_shared_img_cache'): self.__class__._shared_img_cache = {}
             zoom_key = round(camera.zoom, 2)
             angle_deg = math.degrees(-self.facing_angle)
             angle_key = int(angle_deg / 5) * 5 
-            
-            # 💡 투명도(은신 상태)까지 포함해서 캐시 키 생성 (유령 버그 방지)
             is_hidden = getattr(self, 'is_hiding', False)
             cache_key = (zoom_key, angle_key, is_hidden)
-            
-            # 클래스 캐시에 이미지가 없다면 한 번만 연산
             if cache_key not in self.__class__._shared_img_cache:
-                new_w = int(self.image.get_width() * camera.zoom)
-                new_h = int(self.image.get_height() * camera.zoom)
-                
+                new_w, new_h = int(self.image.get_width() * camera.zoom), int(self.image.get_height() * camera.zoom)
                 scaled = pygame.transform.scale(self.image, (new_w, new_h))
-                # (동물별 고유 반전이나 기울기 코드가 있다면 여기에 적용)
-                
                 final_rotated = pygame.transform.rotate(scaled, angle_key)
-                
-                # 숨은 상태용 캐시라면 투명도를 깎아서 저장
-                if is_hidden:
-                    final_rotated.set_alpha(110)
-                
+                if is_hidden: final_rotated.set_alpha(110)
                 self.__class__._shared_img_cache[cache_key] = final_rotated
-                
-            # 🚀 모든 같은 종의 동물들이 이 이미지 하나를 공유해서 사용!
             final_image = self.__class__._shared_img_cache[cache_key]
             rect = final_image.get_rect(center=(sx, sy))
             screen.blit(final_image, rect)
-                
-            # 체력바 렌더링 (기존 동일)
             hp_ratio = self.hp / self.max_hp
-            bar_w = 30 * camera.zoom
-            bar_h = 4 * camera.zoom
+            bar_w, bar_h = 30 * camera.zoom, 4 * camera.zoom
             new_h = int(self.image.get_height() * camera.zoom)
             pygame.draw.rect(screen, (220, 60, 60), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w, bar_h))
             pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w * hp_ratio, bar_h))
-        else:
-            # 이미지 로드 실패 시 기본 원으로 그리기(부모 클래스)
-            super().draw(screen, camera)
+        else: super().draw(screen, camera)
     
     def make_child(self):
         breed_cost = 15.0
-        if self.stamina < breed_cost or (self.couple and self.couple.stamina < breed_cost):
-            return None
-            
+        if self.stamina < breed_cost or (self.couple and self.couple.stamina < breed_cost): return None
         self.use_stamina(breed_cost)
-        if self.couple:
-            self.couple.use_stamina(breed_cost)
-            
+        if self.couple: self.couple.use_stamina(breed_cost)
         print(f"🥚 {self.name}이(가) 끈적한 알을 낳았습니다!")
         return Egg(self.coordinate, self, hatch_time=self.HATCH_TIME)
 
     def _spawn_child(self):
         child_sex = random.choice(["male", "female"])
         child = type(self)(name=f"{self.name}_child", coordinate=self.coordinate[:], sex=child_sex)
-        
         child.max_hp = int(self.max_hp * random.uniform(0.9, 1.1))
         child.hp = child.max_hp
         child.max_stamina = self.max_stamina * random.uniform(0.9, 1.1)
         child.max_speed = self.max_speed * random.uniform(0.9, 1.1)
         child.poison_amount = self.poison_amount * random.uniform(0.9, 1.1)
-        
         return child
 
     def jump(self, dt: float, target: Optional[Tuple[float, float]] = None):
-        """도약 이동: 스태미나를 소모해 순간적으로 거리를 벌립니다."""
-        # 💡 프레임마다 스태미나를 10씩 증발시키던 버그를 제거하고 이동만 시킵니다.
         self.move(dt, target, speed_multiplier=2.5)
 
     def poison(self, attacker: Animal):
-        """자신을 공격한 포식자나 모기에게 독 효과를 부여합니다."""
         print(f"☠️ [{self.name}]의 맹독이 {attacker.name}에게 퍼집니다!")
         attacker.apply_poison(duration=8.0, dps=self.poison_amount)
-        
-        # 프로젝트 계획서대로 상대의 체력 외에도 속도/스태미나에 패널티 부여
         attacker.stamina = max(0, attacker.stamina - 20.0)
         attacker.max_speed = max(10.0, attacker.max_speed * 0.8)
 
     def take_damage(self, amount: float, source: str = "unknown", attacker: Optional[Animal] = None):
-        """Animal의 기본 피해 공식을 오버라이딩하여, 피해를 입으면 공격자에게 독 발동"""
-        # 상위 클래스의 데미지 처리 호출
-        super().take_damage(amount, source) 
-        
-        # 공격자(attacker) 객체가 전달되었고 살아있다면 독 발동
-        if attacker and attacker.alive:
-            self.poison(attacker)
+        super().take_damage(amount, source, attacker) 
+        if attacker and attacker.alive: self.poison(attacker)
 
     def update(self, dt: float, game_map, weather, animals: List[Animal]):
         super().update(dt, game_map, weather, animals)
-        
-        if not self.alive or self.is_stunned:
-            return
-            
-        # 💡 [핵심 구현] 나무 뒤 X-ray 효과를 위한 충돌 판정
-        tree = game_map.get_tree_at_pixel(self.coordinate[0], self.coordinate[1])
-        self._is_behind_tree = (tree is not None and self.coordinate[1] < tree.coordinate[1])
+        if not self.alive or self.is_stunned: return
         
         if self.hunger>30.0:
             for a in animals:
                 if a.__class__.__name__ == "Mosquito" and a.alive:
                     dist = self.distance_to(a)
-
-                    #혀가 닿는 사거리 이내일 때
                     if dist<30.0:
                         print(f"🐸 {self.name}이(가) {a.name}을(를) 잡아먹었습니다!")
-                        a.take_damage(999.0, source=self.name) # 모기 즉사
-                        self.eat(15.0) # 배고픔 15 회복
+                        a.take_damage(999.0, source="toxic_frog_eat", attacker=self) # 💡 attacker 전달로 모기 즉사 성공!
+                        self.eat(15.0)
                         break
-
-                    #도약해서 먹을 수 있을 때
                     elif dist <= 120.0 and self.stamina >= 10.0:
-                        self.use_stamina(10.0 * dt) # 💡 사냥 중일 때는 초당 10씩 소모하도록 보정
+                        self.use_stamina(10.0 * dt)
                         self.jump(dt, target=a.coordinate)
                         break
+                        
         if not getattr(self, 'is_hunting', False) and not getattr(self, 'is_fleeing', False):
-            if not getattr(self, 'is_hunting', False) and not getattr(self, 'is_fleeing', False):
-                # 🍎 [추가] 사과 탐색 및 섭취 로직
-                if self.hunger > 30.0 and game_map.apples:
-                    closest_apple = min(game_map.apples, key=lambda a: self.distance_to((a.x, a.y)), default=None)
-                    if closest_apple and self.distance_to((closest_apple.x, closest_apple.y)) < self.vision_range:
-                        if self.distance_to((closest_apple.x, closest_apple.y)) < 25.0:
-                            print(f"🍎 [{self.name}]가 긴 혀로 사과를 날름 삼켰습니다!")
-                            self.eat(closest_apple.heal_amount)
-                            game_map.apples.remove(closest_apple)
-                            self.target_coord = None
-                        else:
-                            self.target_coord = [closest_apple.x, closest_apple.y]
-                            self.move(dt, self.target_coord, speed_multiplier=0.8)
-                        return
-            
-            # 💧 [추가] 갈증 해소 로직 (살기 위해 물가로 이동)
-            if self.is_seeking_water and getattr(self, '_water_target', None):
-                self.move(dt, self._water_target)
-                self.target_coord = None # 물을 찾을 때는 랜덤 배회 타겟 초기화
+            # 💡 [추가] 집 찾기 로직
+            if self.try_return_home(dt):
+                self.target_coord = None
                 return
                 
-            # 💕 [추가] 짝꿍 따라가기
+            if self.hunger > 30.0 and game_map.apples:
+                closest_apple = min(game_map.apples, key=lambda a: self.distance_to((a.x, a.y)), default=None)
+                if closest_apple and self.distance_to((closest_apple.x, closest_apple.y)) < self.vision_range:
+                    if self.distance_to((closest_apple.x, closest_apple.y)) < 25.0:
+                        print(f"🍎 [{self.name}]가 긴 혀로 사과를 날름 삼켰습니다!")
+                        self.eat(closest_apple.heal_amount)
+                        if closest_apple in game_map.apples: game_map.apples.remove(closest_apple) # 💡 사과 증발 버그 제거
+                        self.target_coord = None
+                    else:
+                        self.target_coord = [closest_apple.x, closest_apple.y]
+                        self.move(dt, self.target_coord, speed_multiplier=0.8)
+                    return
+            
+            if self.is_seeking_water and getattr(self, '_water_target', None):
+                self.move(dt, self._water_target)
+                self.target_coord = None
+                return
+                
             couple_tgt = self.couple_follow()
             if couple_tgt:
                 self.move(dt, couple_tgt)
@@ -899,30 +559,17 @@ class ToxicFrog(Animal):
                 if random.random() < 0.05: 
                     rx = self.coordinate[0] + random.uniform(-150.0, 150.0)
                     ry = self.coordinate[1] + random.uniform(-150.0, 150.0)
-                    # 맵 이탈 방지
                     rx = max(50.0, min(float(game_map.pixel_width - 50.0), rx))
                     ry = max(50.0, min(float(game_map.pixel_height - 50.0), ry))
                     self.target_coord = [rx, ry]
             
             if getattr(self, 'target_coord', None):
-                # 점프 부스트 타이머 감소
-                if getattr(self, 'jump_boost_timer', 0) > 0:
-                    self.jump_boost_timer -= dt
+                if getattr(self, 'jump_boost_timer', 0) > 0: self.jump_boost_timer -= dt
+                if (self.environment_status != "water" and self.stamina >= 40.0 and getattr(self, 'jump_boost_timer', 0) <= 0 and random.random() < 0.02):
+                    self.use_stamina(10.0)
+                    self.jump_boost_timer = 0.8
                 
-                # 물속이 아니고, 스태미나가 여유로우며, 점프 중이 아닐 때 확률적 점프 발동
-                if (self.environment_status != "water" and 
-                    self.stamina >= 40.0 and 
-                    getattr(self, 'jump_boost_timer', 0) <= 0 and 
-                    random.random() < 0.02):
-                    self.use_stamina(10.0) # 점프 시작 시 1회 소모
-                    self.jump_boost_timer = 0.8 # 0.8초 동안 가속
-                
-                # 💡 [핵심 수정] 아래의 이동 및 타겟 초기화 코드가 누락되어 있었습니다!
-                if getattr(self, 'jump_boost_timer', 0) > 0:
-                    self.jump(dt, target=self.target_coord) # 부스트 중일 때는 점프(고속 이동)
-                else:
-                    self.move(dt, target=self.target_coord) # 아닐 때는 일반 이동
+                if getattr(self, 'jump_boost_timer', 0) > 0: self.jump(dt, target=self.target_coord)
+                else: self.move(dt, target=self.target_coord)
                     
-                # 목적지에 도달하면 타겟을 비워서 다음 랜덤 위치를 찾게 만듭니다
-                if self.distance_to(self.target_coord) < 15.0:
-                    self.target_coord = None
+                if self.distance_to(self.target_coord) < 15.0: self.target_coord = None
