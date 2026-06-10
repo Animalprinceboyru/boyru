@@ -163,68 +163,9 @@ class Rhino(Animal):
             pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w * hp_ratio, bar_h))
         else: super().draw(screen,camera)
 
-    def make_child(self):
-        breed_cost = 40.0
-        if self.stamina < breed_cost or (self.couple and self.couple.stamina < breed_cost): return None
-        self.use_stamina(breed_cost)
-        if self.couple: self.couple.use_stamina(breed_cost)
-        child_sex = random.choice(["male", "female"])
-        child = type(self)(name=f"{self.name}_child", coordinate=self.coordinate[:], sex=child_sex)
-        child.max_hp = int(self.max_hp * random.uniform(0.9, 1.1))
-        child.hp = child.max_hp
-        child.max_stamina = self.max_stamina * random.uniform(0.9, 1.1)
-        child.max_speed = self.max_speed * random.uniform(0.9, 1.1)
-        child.crash_power = self.crash_power * random.uniform(0.9, 1.1)
-        print(f"🦏 {self.name}이(가) 건강한 새끼를 낳았습니다!")
-        return child
-    
-    def start_charge(self, attacker: Animal):
-        if not self.is_charging and self.use_stamina(30.0):
-            self.is_charging = True
-            self.charge_attacker = attacker
-            self.charge_target_coord = (attacker.coordinate[0], attacker.coordinate[1])
-            print(f"🦏 🔥 [{self.name}]가 치명상을 입고 격노하여 {attacker.name}이(가) 있던 위치로 맹렬히 돌진합니다!!")
-
-    def take_damage(self, amount: float, source: str = "unknown", attacker: Optional[Animal] = None):
-        super().take_damage(amount, source, attacker)
-        if self.alive and self.hp <= self.max_hp * 0.35 and attacker and attacker.alive:
-            if not self.is_charging: self.start_charge(attacker)
-
-    def _stop_charge(self):
-        self.is_charging = False
-        self.charge_target_coord = None
-        self.charge_attacker = None
-        self.stop()
-
     def update(self, dt: float, game_map, weather, animals: List[Animal]):
         super().update(dt, game_map, weather, animals)
         if not self.alive or self.is_stunned: return
-
-        if self.is_charging and self.charge_target_coord:
-            self.move(dt, self.charge_target_coord, speed_multiplier=25/8)
-            if self.charge_attacker and self.charge_attacker.alive:
-                if self.distance_to(self.charge_attacker) <= 30.0:
-                    print(f"💥 🦏 [{self.name}]의 초강력 박치기가 경로 상에 있던 {self.charge_attacker.name}에게 적중했습니다!")
-                    self.charge_attacker.take_damage(self.crash_power, source="rhino_crash", attacker=self)
-                    self._stop_charge()
-                    return
-            tree = game_map.get_tree_at_pixel(self.coordinate[0], self.coordinate[1])
-            if tree and not tree.broken:
-                print(f"💥 쾅! [{self.name}]가 돌진 중 나무를 들이받아 부쉈습니다!")
-                game_map.break_tree(tree)
-                for animal in animals:
-                    if type(animal).__name__ == "Monkey" and getattr(animal, 'on_tree', False):
-                        if self.distance_to(animal) < 60.0:
-                            animal.on_tree = False
-                            animal.current_tree = None
-                            if hasattr(animal, 'apply_stun'): animal.apply_stun(2.0)
-                            print(f"쿵! 나무가 부서져 {animal.name}가 땅으로 떨어졌습니다!")
-                self._stop_charge()
-                return
-
-            dist_to_target = math.hypot(self.coordinate[0] - self.charge_target_coord[0], self.coordinate[1] - self.charge_target_coord[1])
-            if dist_to_target < 10.0: self._stop_charge()
-        
         if not getattr(self, 'is_hunting', False) and not getattr(self, 'is_fleeing', False):
             # 💡 [추가] 집 찾기 로직
             if self.try_return_home(dt):
