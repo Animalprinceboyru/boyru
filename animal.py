@@ -292,8 +292,11 @@ class Animal:
 
     def eat(self, food_value: float = 30.0):
         self.hunger = max(0.0, self.hunger - food_value)
-        self.heal(food_value * 0.1)
-
+        self.heal(food_value)
+        # 💡 [보너스] 밥을 먹었으니 에너지가 돌도록 스태미나도 50% 비율로 회복시켜 줍니다.
+        self.stamina = min(self.max_stamina, self.stamina + (food_value * 0.5))
+    
+    # ── 공격 ────────────────────────────────────
     def attack(self, target: "Animal", damage: float = 10.0):
         if not self.alive or not target.alive: return
         target.take_damage(damage, source=self.name, attacker=self)
