@@ -151,7 +151,8 @@ def main():
         
     # 8. 코뿔소 (체력 180 시작: 스치기만 해도 분노하여 돌진하며 나무를 부숨)
     for i in range(5):
-        animals.append(Rhino(name=f"코뿔소_{i+1}", coordinate=get_random_land_pos(), sex="male" if i%2==0 else "female", age=600, hp=180))
+        animals.append(Rhino(name=f"코뿔소_{i+1}", coordinate=(6000.0,2000.0), sex="male" if i%2==0 else "female", age=600, hp=180))
+        animals.append(Anaconda(name=f'아나콘다{i}', coordinate=(6000.0,2010.0),hunger=80.0))
 
     print(f"총 {len(animals)}마리의 동물이 황금 밸런스 쇼케이스존에 배치되었습니다!")
 
