@@ -321,8 +321,8 @@ class Animal:
     def _home_speed_multiplier(self) -> float:
         return 1.15 if self.near_home() else 1.0
 
-    COUPLE_RANGE: float = 80.0                       # 커플 유지(리쉬) 기준 거리
-    COUPLE_FORM_RANGE: float = 50.0                  # 커플 생성 범위
+    COUPLE_RANGE: float = 100.0                       # 커플 유지(리쉬) 기준 거리
+    COUPLE_FORM_RANGE: float = 80.0                  # 커플 생성 범위
     COUPLE_HEADING_LIMIT: float = math.radians(30)   # 커플 이동 방향 허용 차이 (30도)
     BREED_COOLDOWN: float = 15.0                     # 번식 후 다시 커플이 될 때까지 대기 시간(초)
 
@@ -465,7 +465,7 @@ class Animal:
                 self._water_target = None
         else:
             is_active = math.hypot(*self.velocity) > self.max_speed * 0.6
-            rate = 0.55 if is_active else 0.18
+            rate = 2 if is_active else 1
             self.thirst = min(100.0, self.thirst + rate * dt)
             if self.thirst >= 100.0: self._die(cause="dehydration")
 
