@@ -26,6 +26,7 @@ class Mosquito(FlyingAnimal):
         self.max_speed = 60.0
         self.max_stamina = 50.0
         self.stamina = 50.0
+        self.max_age = 800.0
         
         self.bite_damage = 5.0        
         self.bite_poison_dps = 2.0    
@@ -84,11 +85,10 @@ class Mosquito(FlyingAnimal):
             
             pygame.draw.rect(screen, (80, 0, 0), (bx, by, bar_w, bar_h))
             pygame.draw.rect(screen, (100, 220, 120), (bx, by, int(bar_w * hp_ratio), bar_h))
-            
             if self.is_poisoned:
                 pygame.draw.circle(screen, (100, 255, 100), (int(sx) + 3, int(sy) + offset_y - 5), 2)
         else:
-            pygame.draw.circle(screen, (255, 255, 255), (int(sx), int(sy) + offset_y), max(2, int(4 * camera.zoom)))
+            pygame.draw.circle(screen, (255, 255, 255), (int(sx), int(sy) + offset_y), max(10, int(20 * camera.zoom)))
             
             hp_ratio = self.hp / self.max_hp
             bar_w = int(12 * camera.zoom)

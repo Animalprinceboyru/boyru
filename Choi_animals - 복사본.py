@@ -34,21 +34,13 @@ class FlyingAnimal(Prey):
             super().move(dt, target, speed_multiplier=speed_multiplier)
     
     def take_damage(self, amount: float, source: str = "unknown", attacker: Optional[Animal] = None):
-        """비행 중일 때는 전기/독 공격을 제외하고 70% 확률로 회피 (30% 확률로 피격)"""
+        """비행 중일 때는 전기뱀장어의 공격이나 독개구리 즉사 판정만 받고 나머지는 회피"""
         if self.is_flying:
-            # 1. 확정 명중 공격 (전기 광역기, 독개구리 즉사기)
-            if source == "electric_shock" or (attacker and attacker.__class__.__name__ in ["ElectricEel", "ToxicFrog"]):
+            if source == "electric_shock" or (attacker and attacker.__class__.__name__ == "ElectricEel") or (attacker and attacker.__class__.__name__ == "ToxicFrog"):
                 super().take_damage(amount, source, attacker)
-            # 2. 모기를 포함한 일반 공격은 70% 확률로 회피 작동!
             else:
-                if random.random() < 0.70:
-                    atk_name = attacker.name if attacker else source
-                    print(f"💨 🦅 [{self.name}]가 뛰어난 비행 기동력으로 {atk_name}의 공격을 휙 피했습니다! (70% 회피 성공)")
-                    return
-                else:
-                    super().take_damage(amount, source, attacker)
+                return
         else:
-            # 지상에 있을 때는 평범하게 데미지를 받음
             super().take_damage(amount, source, attacker)
 
     def attack(self, target: Optional[Animal] = None, base_damage: float = 15.0):
@@ -78,7 +70,7 @@ class FlyingAnimal(Prey):
         child.max_hp = int(self.max_hp * random.uniform(0.9, 1.1))
         child.hp = child.max_hp
         child.max_stamina = self.max_stamina * random.uniform(0.9, 1.1)
-        child.max_speed = max(self.max_speed * random.uniform(0.9, 1.1), 20)
+        child.max_speed = self.max_speed * random.uniform(0.9, 1.1)
         child.flying_speed = self.flying_speed * random.uniform(0.9, 1.1)
         return child
 

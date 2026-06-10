@@ -244,14 +244,9 @@ class Animal:
             dx = target[0] - self.coordinate[0]
             dy = target[1] - self.coordinate[1]
             dist = math.hypot(dx, dy)
-            # 💡 [핵심 수정] 거리가 너무 가까울 때 앞뒤로 진동(부르르 떠는 현상) 방지
-            if dist > 5.0:
+            if dist > 1.0:
                 self.velocity[0] += dx / dist * self.accelerate * dt
                 self.velocity[1] += dy / dist * self.accelerate * dt
-            else:
-                # 목표 지점에 거의 도달했다면 급브레이크를 밟아 부드럽게 정지
-                self.velocity[0] *= 0.5
-                self.velocity[1] *= 0.5
 
         spd = math.hypot(*self.velocity)
         poison_mul  = self.poison_speed_multiplier if self.is_poisoned else 1.0

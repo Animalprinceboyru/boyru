@@ -352,10 +352,8 @@ class Crocodile(Predator):
         if self.image_path not in Bae:
             try:
                 Bae[self.image_path] = pygame.image.load(self.image_path).convert_alpha()
-                Bae[self.image_path] = pygame.transform.flip(Bae[self.image_path], True, False)
-            except Exception as e: 
-                print(f"⚠️ 악어 이미지 로드 실패: {e}") # 💡 나중을 위해 에러 로그를 남기도록 수정하는 것을 추천합니다!
-                Bae[self.image_path] = None
+                Bae[self.image_path] = pygame.transoform.flip(Bae[self.image_path],True, False)
+            except Exception: Bae[self.image_path] = None
         orig_img = Bae[self.image_path]
         if orig_img is not None:
             orig_w, orig_h = orig_img.get_size()
