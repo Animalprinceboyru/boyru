@@ -11,7 +11,7 @@ CHOI_IMAGE_CACHE={}
 # ==========================================
 # 1. 비행 동물 부모 클래스 (앵무새, 모기 등의 부모)
 # ==========================================
-class FlyingAnimal(Animal):
+class FlyingAnimal(Prey):
     SPECIES_VISION_RANGE: float = 200.0
     SPECIES_VISION_ANGLE: float = 160.0
     HATCH_TIME: float = 10.0 
@@ -21,6 +21,7 @@ class FlyingAnimal(Animal):
         self.flying_speed = flying_speed
         self.can_fly = True
         self.is_flying = False
+        self.hp = self.max_hp
     
     def move(self, dt: float, target: Optional[Tuple[float, float]] = None, speed_multiplier: float = 1.0):
         if self.is_flying:
@@ -104,6 +105,7 @@ class Rhino(Animal):
         self.max_speed = 90.0
         self.size=random.uniform(100,200)
         self.max_hp=600
+        self.hp=self.max_hp
         self.max_speed=80
         
         self.is_charging = False
@@ -246,6 +248,7 @@ class ElectricEel(Predator):
         self.max_speed = 110.0
         self.size=random.uniform(80,140)
         self.max_hp=150
+        self.hp=self.max_hp
         
         self.image_path = "eel.png" 
         self.image = None
@@ -435,6 +438,7 @@ class ToxicFrog(Prey):
         self.max_speed = 50.0
         self.size = random.uniform(30,60)
         self.max_hp=50
+        self.hp=self.max_hp
 
         self.image_path = "frog.png"
         self.image = None

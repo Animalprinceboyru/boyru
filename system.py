@@ -112,18 +112,18 @@ def main():
         tx, ty = random.choice(land_tiles)
         return (tx * TILE_SIZE + TILE_SIZE / 2, ty * TILE_SIZE + TILE_SIZE / 2)
 
-    for i in range(6):
+    for i in range(12):
         animals.append(Anaconda(name=f"아나콘다_{i+1}", coordinate=get_random_water_pos(), sex="male" if i%2==0 else "female", age=600))
         animals.append(Crocodile(name=f"악어_{i+1}", coordinate=get_random_water_pos(), sex="female" if i%2==0 else "male", age=600))
         animals.append(ElectricEel(name=f"전기뱀장어_{i+1}", coordinate=get_random_water_pos(), sex="male" if i%2==0 else "female", age=600))
 
-    for i in range(8):
+    for i in range(10):
         animals.append(Tarantula(name=f"타란튤라_{i+1}", coordinate=get_random_land_pos(), sex="female" if i%2==0 else "male", age=600))
         
-    for i in range(10):
+    for i in range(15):
         animals.append(ToxicFrog(name=f"독개구리_{i+1}", coordinate=get_random_land_pos(), sex="male" if i%2==0 else "female", age=600))
 
-    for i in range(20):
+    for i in range(25):
         animals.append(Capybara(name=f"카피바라_{i+1}", coordinate=get_random_land_pos(), sex="female" if i%2==0 else "male", age=600))
         
     for i in range(15):
@@ -133,7 +133,7 @@ def main():
     for i in range(5):
         animals.append(Parrot(name=f"앵무새_{i+1}", coordinate=get_random_land_pos(), sex="female" if i%2==0 else "male", age=600))
         
-    for i in range(4):
+    for i in range(10):
         animals.append(Rhino(name=f"코뿔소_{i+1}", coordinate=get_random_land_pos(), sex="male" if i%2==0 else "female", age=600))
 
     print(f"총 {len(animals)}마리의 동물이 성공적으로 배치되었습니다!")

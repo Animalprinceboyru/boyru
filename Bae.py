@@ -59,6 +59,7 @@ class Anaconda(Predator):
         super().__init__(name=name, coordinate=coordinate, attack_range=35.0, hunt_range=220.0, attack_success_rate=0.55,
                          hunger_limit=40.0, chase_speed_mul=1.3, max_speed=water_max_speed, max_accelerate=water_max_accelerate, **kwargs)
         self.max_hp=250
+        self.hp=self.max_hp
         self.choke_range: float = choke_range
         self.hidden: bool = False
         self.water_max_speed      = water_max_speed
@@ -117,17 +118,20 @@ class Anaconda(Predator):
     def _nearest_water_point_to(self, target_coord: Tuple[float, float], game_map) -> Optional[Tuple[float, float]]:
         ox, oy = self.coordinate
         tx, ty = target_coord
-        step = TILE_SIZE
-        steps = int(self.hunt_range / step)
+        otx, oty = int(ox // TILE_SIZE), int(oy // TILE_SIZE)
+        steps = int(self.hunt_range / TILE_SIZE)
         best_point, best_dist = None, float('inf')
         for dx in range(-steps, steps + 1):
             for dy in range(-steps, steps + 1):
-                wx, wy = ox + dx * step, oy + dy * step
-                if not self._is_water_tile(wx, wy, game_map): continue
-                d = math.hypot(wx - tx, wy - ty)
-                if d < best_dist:
-                    best_dist  = d
-                    best_point = (wx + TILE_SIZE / 2, wy + TILE_SIZE / 2)
+                wtx, wty = otx + dx, oty + dy
+                if 0 <= wtx < game_map.map_width and 0 <= wty < game_map.map_height:
+                    if game_map.is_water(wtx, wty):
+                        wx = wtx * TILE_SIZE + TILE_SIZE / 2
+                        wy = wty * TILE_SIZE + TILE_SIZE / 2
+                        d = math.hypot(wx - tx, wy - ty)
+                        if d < best_dist:
+                            best_dist  = d
+                            best_point = (wx, wy)
         return best_point
 
     def _wander(self, dt: float, game_map):
@@ -169,6 +173,7 @@ class Anaconda(Predator):
 
     def _set_state(self, state: str, target: Optional[Animal] = None):
         self._state, self._ambush_timer, self._target = state, 0.0, target
+        self._wander_target = None
 
     def _update_behavior(self, dt: float, animals: List[Animal], game_map):
         state = self._state
@@ -243,17 +248,17 @@ class Anaconda(Predator):
         self._apply_environment_stats(game_map)
         self._apply_land_stamina_drain(dt)
 
-        land_ok = (self._STATE_RUSHING, self._STATE_CHASING, self._STATE_RETURNING)
         if self.environment_status == "water":
             self._update_behavior(dt, animals, game_map)
         else:
-            # 육지: 돌진/추격/복귀 상태만 계속 진행, 그 외엔 물로 복귀
             if self.hidden: self.stop_hide()
-            if self._state in land_ok:
+            
+            if self._state in (self._STATE_CHASING, self._STATE_RUSHING, self._STATE_RETURNING):
                 self._update_behavior(dt, animals, game_map)
             else:
-                self._set_state(self._STATE_RETURNING)
-                self._update_behavior(dt, animals, game_map)
+                self._wander(dt, game_map)
+                if self._state != self._STATE_IDLE:
+                    self._set_state(self._STATE_IDLE)
 
     def make_child(self) -> "Egg":
         return Egg(coordinate=self.home_coordinate or tuple(self.coordinate), parent=self, hatch_time=self.HATCH_TIME)
@@ -291,7 +296,9 @@ class Anaconda(Predator):
             new_h = int(self.image.get_height() * camera.zoom)
             pygame.draw.rect(screen, (220, 60, 60), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w, bar_h))
             pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w * hp_ratio, bar_h))
-        else: super().draw(screen, camera)
+        else:
+            super().draw(screen, camera)
+
 
 # ════════════════════════════════════════════════
 #  Crocodile
@@ -315,7 +322,7 @@ class Crocodile(Predator):
 
     def __init__(self, name, coordinate, water_max_speed=120.0, water_max_accel=260.0,
                  rush_max_speed=280.0, rush_max_accel=600.0, rush_speed_mul=3.0, land_stamina_drain=12.0,
-                 drink_range=340.0, lurk_timeout=30.0, death_roll_dps=35.0, death_roll_duration=2.5, **kwargs):
+                 drink_range=360.0, lurk_timeout=30.0, death_roll_dps=35.0, death_roll_duration=2.5, **kwargs):
         super().__init__(name=name, coordinate=coordinate, attack_range=45.0, hunt_range=380.0,
             attack_success_rate=0.60, hunger_limit=45.0, chase_speed_mul=1.4, max_speed=water_max_speed, max_accelerate=water_max_accel,
             hp=200, max_hp=200, max_stamina=130.0, stamina=130.0, environment_status="water", **kwargs)
@@ -326,6 +333,7 @@ class Crocodile(Predator):
         self.drink_range, self.lurk_timeout = drink_range, lurk_timeout   # drink_range = 돌진 가능 사거리
         self.death_roll_dps, self.death_roll_duration = death_roll_dps, death_roll_duration
         self.max_hp=350
+        self.hp=self.max_hp
 
         self.submerged   = False
         self._state      = self._IDLE
@@ -376,8 +384,12 @@ class Crocodile(Predator):
     def _set_state(self, state, target=None):
         self._state, self._target, self._roll_timer, self._lurk_timer = state, target, 0.0, 0.0
         if state not in (self._LURKING, self._SEEKING_SHORE): self.submerged = False
-        if state == self._RUSHING: self.max_speed, self.max_accelerate = self.rush_max_speed, self.rush_max_accel
-        else: self.max_speed, self.max_accelerate = self.water_max_speed, self.water_max_accel
+        
+        if state == self._RUSHING: 
+            self.max_speed = self.water_max_speed * 5.0
+            self.max_accelerate = 1500.0
+        else: 
+            self.max_speed, self.max_accelerate = self.water_max_speed, self.water_max_accel
 
     def _pick_shore(self, game_map):
         shores = _find_shore_positions(game_map, self.coordinate[0], self.coordinate[1])
@@ -482,7 +494,7 @@ class Crocodile(Predator):
             t = self._target
             if t is None or not t.alive: self._set_state(self._RETURNING); return
             # 육지든 물이든 최단거리로 피식자에게 직접 돌진
-            self.move(dt, t.coordinate, self.rush_speed_mul)
+            self.move(dt, t.coordinate, 1.0)
             if self.distance_to(t) <= self.attack_range:
                 if random.random() < self._ambush_rate(t): self._set_state(self._DEATH_ROLL, t)
                 else: self._set_state(self._CHASING, t)
@@ -537,28 +549,35 @@ class Crocodile(Predator):
     def draw_fov_debug(self, screen, camera, alpha=80):
         # 기본 시야(FOV) 표시
         super().draw_fov_debug(screen, camera, alpha=alpha)
-        if not self.alive: return
-        # 기습 대기(LURKING) 중일 때 돌진 가능 사거리(육지 방향, 시야각 꼭지각) 표시
-        if self._state == self._LURKING:
-            base_ang = self._ambush_angle if self._ambush_angle is not None else self.facing_angle
-            sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
-            r = self.drink_range * camera.zoom
-            half = math.radians(self.SPECIES_VISION_ANGLE / 2.0)
-            steps = 28
-            pts = [(sx, sy)]
-            for i in range(steps + 1):
-                a = base_ang - half + (2 * half) * i / steps
-                pts.append((sx + r * math.cos(a), sy + r * math.sin(a)))
 
-            xs = [p[0] for p in pts]; ys = [p[1] for p in pts]
-            minx, miny = min(xs), min(ys)
-            w, h = int(max(xs) - minx) + 2, int(max(ys) - miny) + 2
-            if w <= 0 or h <= 0: return
-            surf = pygame.Surface((w, h), pygame.SRCALPHA)
-            local = [(x - minx + 1, y - miny + 1) for x, y in pts]
-            pygame.draw.polygon(surf, (255, 70, 70, max(20, alpha // 3)), local)
-            pygame.draw.polygon(surf, (255, 70, 70, alpha), local, max(2, int(2 * camera.zoom)))
-            screen.blit(surf, (int(minx) - 1, int(miny) - 1))
+        # 잠복(Lurking) 중일 때 육지 방향 부채꼴을 빨간색으로 추가 표시
+        if self.alive and self._state == self._LURKING and self._ambush_angle is not None:
+            sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
+            R = int(self.drink_range * camera.zoom)
+            
+            # 최적화: 화면 밖이면 연산 건너뜀
+            if not (-R < sx < camera.screen_w + R and -R < sy < camera.screen_h + R): 
+                return
+
+            half_angle = math.radians(self.SPECIES_VISION_ANGLE / 2.0)
+            
+            # 빨간색 반투명 Surface 생성
+            surf = pygame.Surface((R*2 + 2, R*2 + 2), pygame.SRCALPHA)
+            c = (R + 1, R + 1)
+            
+            # 💡 [핵심 수정] 점을 여러 개 찍어서 부드러운 '부채꼴' 호(Arc)를 만듭니다.
+            start_ang = self._ambush_angle - half_angle
+            end_ang   = self._ambush_angle + half_angle
+            pts = [c]
+            
+            segments = 15 # 15등분하여 둥글게 처리
+            for i in range(segments + 1):
+                a = start_ang + (end_ang - start_ang) * i / segments
+                # 💡 [핵심 수정] 각도 앞의 마이너스(-)를 제거하여 육지 방향과 완벽히 일치시킵니다!
+                pts.append((c[0] + math.cos(a) * R, c[1] + math.sin(a) * R))
+                
+            pygame.draw.polygon(surf, (255, 0, 0, alpha), pts)
+            screen.blit(surf, (int(sx) - R - 1, int(sy) - R - 1))
 
     def draw(self, screen: pygame.Surface, camera):
         if not self.alive: return
@@ -570,21 +589,18 @@ class Crocodile(Predator):
             if not hasattr(self.__class__, '_shared_img_cache'): self.__class__._shared_img_cache = {}
             zoom_key = round(camera.zoom, 2)
             angle_deg = math.degrees(-self.facing_angle)
-            angle_key = int(angle_deg / 5) * 5 
+            angle_key = int(angle_deg / 5) * 5
             is_hidden = getattr(self, 'is_hiding', False)
             cache_key = (zoom_key, angle_key, is_hidden)
-
             if cache_key not in self.__class__._shared_img_cache:
                 new_w, new_h = int(self.image.get_width() * camera.zoom), int(self.image.get_height() * camera.zoom)
                 scaled = pygame.transform.scale(self.image, (new_w, new_h))
                 final_rotated = pygame.transform.rotate(scaled, angle_key)
                 if is_hidden: final_rotated.set_alpha(110)
                 self.__class__._shared_img_cache[cache_key] = final_rotated
-
             final_image = self.__class__._shared_img_cache[cache_key]
             rect = final_image.get_rect(center=(sx, sy))
             screen.blit(final_image, rect)
-
             hp_ratio = self.hp / self.max_hp
             bar_w, bar_h = 30 * camera.zoom, 4 * camera.zoom
             new_h = int(self.image.get_height() * camera.zoom)
@@ -592,40 +608,36 @@ class Crocodile(Predator):
             pygame.draw.rect(screen, (100, 220, 120), (sx - bar_w/2, sy - (new_h/2) - 10, bar_w * hp_ratio, bar_h))
         else: super().draw(screen, camera)
 
+
 # ════════════════════════════════════════════════
-#  Tarantula
+#  Tarantula (타란툴라 거미)
 # ════════════════════════════════════════════════
 
 class Tarantula(Predator):
-    SPECIES_VISION_RANGE: float = 400.0
-    SPECIES_VISION_ANGLE: float = 360.0
-    HUNT_TARGETS = {"Capybara", "Monkey"}
-    HATCH_TIME   = 60.0
-    minimap_color = (140, 70, 20)
+    SPECIES_VISION_RANGE = 450.0
+    SPECIES_VISION_ANGLE = 270.0
+    minimap_color = (139, 69, 19)
 
     _STATE_WANDER = "wander"
-    _STATE_AMBUSH = "ambush"
+    _STATE_WAITING = "waiting"
+    _STATE_CHASING = "chasing"
 
-    def __init__(self, name: str, coordinate: Tuple[float, float], web_range: float = 150.0,
-                 web_slow_ratio: float = 0.45, bite_damage: float = 12.0, bite_interval: float = 1.0,
-                 poison_duration: float = 8.0, poison_dps: float = 5.0, poison_speed_mul: float = 0.5,
-                 ambush_relocate_time: float = 20.0, **kwargs):
-        super().__init__(name=name, coordinate=coordinate, attack_range=30.0, hunt_range=web_range, attack_success_rate=1.0,
-                         hunger_limit=40.0, chase_speed_mul=1.2, max_speed=60.0, max_accelerate=160.0, hp=80, max_hp=80, size=60.0, **kwargs)
-        self.hidden: bool = False
-        self.web_range: float = web_range
-        self.web_slow_ratio: float = web_slow_ratio
-        self.web_center: Optional[Tuple[float, float]] = None
-        self.web_active: bool = False
+    HUNT_TARGETS = {"ToxicFrog"}  # 사냥 대상
+    HATCH_TIME   = 60.0
 
-        self.bite_damage, self.bite_interval = bite_damage, bite_interval
-        self.poison_duration, self.poison_dps, self.poison_speed_mul = poison_duration, poison_dps, poison_speed_mul
-        self.ambush_relocate_time: float = ambush_relocate_time
-
-        self._state: str = self._STATE_WANDER
-        self._ambush_timer: float = 0.0
-        self._bite_cd: dict = {}
-        self._bitten_nonprey: set = set()
+    def __init__(self, name: str, coordinate: Tuple[float, float], **kwargs):
+        super().__init__(name=name, coordinate=coordinate, attack_range=25.0, hunt_range=250.0,
+                         attack_success_rate=0.7, hunger_limit=30.0, chase_speed_mul=1.5,
+                         max_speed=80.0, max_accelerate=200.0, **kwargs)
+        self.max_hp=100
+        self.hp=self.max_hp
+        self._state = self._STATE_WANDER
+        self._target: Optional[Animal] = None
+        
+        self.web_trap_radius = 50.0
+        self.web_slow_factor = 0.5
+        self.has_web = False
+        self.web_coordinate: Optional[Tuple[float, float]] = None
 
         self._wander_target: Optional[Tuple[float, float]] = None
         self._wander_timer: float = 0.0
@@ -638,166 +650,95 @@ class Tarantula(Predator):
         orig_img = Bae[self.image_path]
         if orig_img is not None:
             orig_w, orig_h = orig_img.get_size()
-            scale_factor = int(self.size * 2.5) / max(orig_w, orig_h)
+            scale_factor = int(self.size * 2.0) / max(orig_w, orig_h)
             self.image = pygame.transform.scale(orig_img, (int(orig_w * scale_factor), int(orig_h * scale_factor)))
 
-    def hide(self): self.hidden = True
-    def stop_hide(self): self.hidden = False
-
-    def make_web(self):
-        self.web_center = (self.coordinate[0], self.coordinate[1])
-        self.web_active = True
-        self._bite_cd.clear(); self._bitten_nonprey.clear()
-
-    def clear_web(self):
-        self.web_center = None
-        self.web_active = False
-        self._bite_cd.clear(); self._bitten_nonprey.clear()
-
-    def _slow(self, a: Animal):
-        spd = math.hypot(a.velocity[0], a.velocity[1])
-        limit = a.max_speed * self.web_slow_ratio
-        if spd > limit and spd > 0:
-            scale = limit / spd
-            a.velocity[0] *= scale; a.velocity[1] *= scale
-
-    def bite(self, target: Animal) -> bool:
-        if not target.alive: return False
-        target.take_damage(self.bite_damage, source=f"{self.name}_bite", attacker=self)
-        target.apply_poison(duration=self.poison_duration, dps=self.poison_dps, speed_multiplier=self.poison_speed_mul)
-        target.apply_stun(0.3)
-        return True
-
-    def _feed(self, food_value: float = 55.0):
-        self.eat(food_value)
-        self.thirst = max(0.0, self.thirst - 25.0)
-
-    def _process_web(self, animals: List[Animal], dt: float) -> bool:
-        if not self.web_active or self.web_center is None: return False
-        cx, cy = self.web_center
-        for k in list(self._bite_cd):
-            self._bite_cd[k] -= dt
-            if self._bite_cd[k] <= 0: del self._bite_cd[k]
-        caught = False
-        in_web_ids = set()
-
-        for a in animals:
-            if a is self or not a.alive: continue
-            if type(a) is type(self) or type(a).__name__ == "Parrot": continue
-            if math.hypot(a.coordinate[0] - cx, a.coordinate[1] - cy) > self.web_range: continue
-            in_web_ids.add(id(a))
-
-            if self._is_prey(a):
-                self._slow(a); caught = True
-                if id(a) not in self._bite_cd:
-                    self.bite(a)
-                    self._bite_cd[id(a)] = self.bite_interval
-                    if not a.alive:
-                        self._feed(a.FOOD_VALUE)   # 💡 사냥감 종류별 영양값
-                        in_web_ids.discard(id(a))
-            else:
-                if id(a) not in self._bitten_nonprey:
-                    self._slow(a); self.bite(a); self._bitten_nonprey.add(id(a)); caught = True
-
-        self._bitten_nonprey &= in_web_ids
-        return caught
-
-    def _web_nearby(self, animals: List[Animal]) -> bool:
-        """현재 위치 기준 거미줄 범위의 2배 반경 안에 다른 거미줄이 있으면 True."""
-        block_r = self.web_range * 2.0
-        cx, cy = self.coordinate
-        for a in animals:
-            if a is self or not a.alive or not isinstance(a, Tarantula): continue
-            if not a.web_active or a.web_center is None: continue
-            if math.hypot(a.web_center[0] - cx, a.web_center[1] - cy) < block_r:
-                return True
-        return False
-
-    def _pick_web_free_target(self, game_map, animals: List[Animal]) -> Tuple[float, float]:
-        """거미줄에서 가장 멀리 떨어진(빈) 방향의 육지 타일을 배회 목표로 선택."""
-        cx, cy = int(self.coordinate[0] // TILE_SIZE), int(self.coordinate[1] // TILE_SIZE)
-        webs = [a.web_center for a in animals
-                if a is not self and a.alive and isinstance(a, Tarantula)
-                and a.web_active and a.web_center is not None]
-
-        candidates = []
-        for _ in range(25):
-            tx, ty = cx + random.randint(-8, 8), cy + random.randint(-8, 8)
-            if not (0 <= tx < game_map.map_width and 0 <= ty < game_map.map_height): continue
-            if game_map.is_water(tx, ty): continue
-            candidates.append((tx * TILE_SIZE + TILE_SIZE / 2, ty * TILE_SIZE + TILE_SIZE / 2))
-
-        if not candidates:
-            return (self.coordinate[0], self.coordinate[1])
-        if not webs:
-            return random.choice(candidates)
-        # 가장 가까운 거미줄까지의 거리가 최대가 되는 후보 = 거미줄이 가장 적은 방향
-        return max(candidates, key=lambda p: min(math.hypot(p[0] - w[0], p[1] - w[1]) for w in webs))
-
-    def _wander(self, dt: float, game_map, animals: List[Animal]):
-        if self.try_return_home(dt): return  # 💡 귀소 본능 우선
+    def _wander(self, dt: float, game_map):
+        if self.try_return_home(dt): return # 💡 귀소 본능 로직 추가
 
         self._wander_timer -= dt
-        if (self._wander_target is None or self._wander_timer <= 0 or self.distance_to(self._wander_target) < TILE_SIZE):
-            self._wander_target = self._pick_web_free_target(game_map, animals)
-            self._wander_timer = random.uniform(3.0, 6.0)
-        self.move(dt, self._wander_target, speed_multiplier=0.4)
+        if self._wander_target is None or self._wander_timer <= 0 or self.distance_to(self._wander_target) < TILE_SIZE:
+            rx, ry = self.coordinate[0] + random.uniform(-200, 200), self.coordinate[1] + random.uniform(-200, 200)
+            rx = max(50.0, min(float(game_map.pixel_width - 50.0), rx))
+            ry = max(50.0, min(float(game_map.pixel_height - 50.0), ry))
+            self._wander_target = (rx, ry)
+            self._wander_timer = random.uniform(3.0, 5.0)
 
-    def _set_state(self, state: str):
-        self._state, self._ambush_timer = state, 0.0
+        if self._wander_target: self.move(dt, self._wander_target, 0.5)
+        else: self.move(dt)
 
-    def _update_behavior(self, dt: float, animals: List[Animal], game_map):
-        # ── 1순위: 목마르면 물 마시러 이동 ──────────────
-        if self.is_seeking_water and self._water_target is not None:
-            self.stop_hide()
-            if self.web_active:
-                self.clear_web()
-            self._state = self._STATE_WANDER
-            self.move(dt, self._water_target, speed_multiplier=0.7)
-            return
+    def _set_state(self, state: str, target: Optional[Animal] = None):
+        self._state, self._target = state, target
 
-        # ── 2순위: 거미줄 없는 방향으로 이동 → 거미줄 생성 ──
-        state = self._state
-        if state == self._STATE_WANDER:
-            self.stop_hide()
-            arrived = (self._wander_target is not None and self.distance_to(self._wander_target) < TILE_SIZE * 1.5)
-            if arrived and not self._web_nearby(animals):
-                self.stop(); self.make_web(); self._set_state(self._STATE_AMBUSH)
-            else:
-                if arrived:  # 도착했지만 근처에 거미줄 → 빈 방향으로 새 목표 재설정
-                    self._wander_target = self._pick_web_free_target(game_map, animals)
-                    self._wander_timer = random.uniform(3.0, 6.0)
-                self._wander(dt, game_map, animals)
-        elif state == self._STATE_AMBUSH:
-            self.hide(); self.stop()
-            caught = self._process_web(animals, dt)
-            if caught: self._ambush_timer = 0.0
-            else:
-                self._ambush_timer += dt
-                if self._ambush_timer >= self.ambush_relocate_time:
-                    self.clear_web(); self._set_state(self._STATE_WANDER)
+    def _deploy_web(self):
+        if not self.has_web:
+            self.has_web = True
+            self.web_coordinate = tuple(self.coordinate)
+
+    def _check_web_trap(self, animals: List[Animal]):
+        if not self.has_web or not self.web_coordinate: return
+        wx, wy = self.web_coordinate
+        for a in animals:
+            if a is self or not a.alive: continue
+            if math.hypot(a.coordinate[0] - wx, a.coordinate[1] - wy) <= self.web_trap_radius:
+                a.max_speed *= self.web_slow_factor
+                if isinstance(a, Prey) and self._is_prey(a):
+                    self._set_state(self._STATE_CHASING, a)
 
     def update(self, dt: float, game_map, weather, animals: List[Animal]):
         Animal.update(self, dt, game_map, weather, animals)
-        if not self.alive or self.is_stunned: # 💡 기절 시 FSM 정지
-            self.clear_web()
-            return
-        self._update_behavior(dt, animals, game_map)
+        if not self.alive or self.is_stunned: return # 💡 기절 시 FSM 정지
 
-    def make_child(self) -> "Egg": return Egg(coordinate=self.home_coordinate or tuple(self.coordinate), parent=self, hatch_time=self.HATCH_TIME)
-    def _spawn_child(self) -> "Tarantula": return Tarantula(name=f"Tarantula_{random.randint(1000, 9999)}", coordinate=tuple(self.coordinate))
+        self._check_web_trap(animals)
+
+        s = self._state
+        if s == self._STATE_WANDER:
+            if self.hunger >= self.hunger_limit:
+                if not self.has_web and random.random() < 0.05:
+                    self._deploy_web()
+                    self._set_state(self._STATE_WAITING)
+                    return
+            prey_list = [a for a in animals if self._is_prey(a) and a.alive and self.distance_to(a) <= self.hunt_range and self.can_see(a, game_map)]
+            if prey_list:
+                self._set_state(self._STATE_CHASING, min(prey_list, key=lambda a: self.distance_to(a)))
+            else: self._wander(dt, game_map)
+        elif s == self._STATE_WAITING:
+            self.stop()
+            if not self.has_web or self.hunger < self.hunger_limit * 0.5: self._set_state(self._STATE_WANDER)
+        elif s == self._STATE_CHASING:
+            t = self._target
+            if t is None or not t.alive or not self.can_see(t, game_map):
+                self._set_state(self._STATE_WANDER); return
+            self.move(dt, t.coordinate, self.chase_speed_mul)
+            if self.distance_to(t) <= self.attack_range:
+                if random.random() < self.attack_success_rate:
+                    self.attack(t, damage=20.0)
+                    t.apply_poison(3.0, 5.0)  # 타란툴라 독 공격 (5초간 초당 3데미지)
+                    if not t.alive:
+                        self.eat(t.FOOD_VALUE) # 💡 사냥감 종류별 영양값
+                        self.has_web = False
+                        self.web_coordinate = None
+                        self._set_state(self._STATE_WANDER)
+            if self.distance_to(t) > self.hunt_range * 1.5: self._set_state(self._STATE_WANDER)
+
+    def make_child(self) -> "Egg":
+        return Egg(coordinate=self.home_coordinate or tuple(self.coordinate), parent=self, hatch_time=self.HATCH_TIME)
+
+    def _spawn_child(self) -> "Tarantula":
+        return Tarantula(name=f"Tarantula_{random.randint(1000, 9999)}", coordinate=tuple(self.coordinate))
 
     def draw(self, screen: pygame.Surface, camera):
         if not self.alive: return
         sx, sy = camera.world_to_screen(self.coordinate[0], self.coordinate[1])
         margin = 100
-        if self.web_active and self.web_center is not None:
-            wcx, wcy = camera.world_to_screen(self.web_center[0], self.web_center[1])
-            web_r = max(1, int(self.web_range * camera.zoom))
-            if -web_r < wcx < camera.screen_w + web_r and -web_r < wcy < camera.screen_h + web_r:
+
+        # 거미줄 시각화 추가
+        if self.has_web and self.web_coordinate:
+            wcx, wcy = camera.world_to_screen(*self.web_coordinate)
+            web_r = int(self.web_trap_radius * camera.zoom)
+            if -margin < wcx < camera.screen_w + margin and -margin < wcy < camera.screen_h + margin:
                 if not hasattr(self.__class__, '_web_cache'): self.__class__._web_cache = {}
-                zoom_key = round(camera.zoom, 1)
-                cache_key = (zoom_key, web_r)
+                cache_key = web_r
                 if cache_key not in self.__class__._web_cache:
                     web_surf = pygame.Surface((web_r * 2 + 2, web_r * 2 + 2), pygame.SRCALPHA)
                     pygame.draw.circle(web_surf, (230, 230, 230, 40), (web_r + 1, web_r + 1), web_r)

@@ -27,6 +27,7 @@ class Capybara(Prey):
         self.escape_success_rate = 0.5
         self.target_coord: Optional[List[float]] = None
         self.wander_timer = 0.0
+        self.hp=self.max_hp
 
         self.image_path = "capybara.png"
         self.image = None
@@ -159,6 +160,7 @@ class Monkey(Prey):
         self.inventory = 5          
         self.throw_power = 20.0
         self.max_hp=120
+        self.hp = self.max_hp
         self.max_speed = 85.0
         self.current_tree = None
         self.target_coord: Optional[List[float]] = None
@@ -306,7 +308,7 @@ class Monkey(Prey):
 # ==========================================
 # 3. 앵무새 (Parrot)
 # ==========================================
-class Parrot(FlyingAnimal, Prey):
+class Parrot(FlyingAnimal):
     SPECIES_VISION_RANGE = 1200.0  
     SPECIES_VISION_ANGLE = 300.0
     minimap_color = (255, 50, 50)
@@ -320,6 +322,7 @@ class Parrot(FlyingAnimal, Prey):
         self.target_coord: Optional[List[float]] = None
         self.wander_timer = 0.0
         self.alert_cooldown = 0.0
+        self.hp = self.max_hp
 
         self.image_path = "parrot.png"
         self.image = None
