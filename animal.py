@@ -62,7 +62,7 @@ class Egg:
             except Exception as e:
                 print(f"⚠️ 알 이미지 로드 실패: {e}")
                 EGG_IMAGE_CACHE[self.image_path] = None
-                
+
         orig_img = EGG_IMAGE_CACHE[self.image_path]
         if orig_img is not None:
             orig_w, orig_h = orig_img.get_size()
@@ -113,7 +113,7 @@ class Egg:
             by = sy - (new_h / 2) - (6 * camera.zoom)
         else:
             pygame.draw.ellipse(screen, (210, 200, 170),
-                                (int(sx) - int(5*camera.zoom), int(sy) - int(4*camera.zoom), 
+                                (int(sx) - int(5*camera.zoom), int(sy) - int(4*camera.zoom),
                                  int(10*camera.zoom), int(8*camera.zoom)))
             bw = 12 * camera.zoom
             bh = 2 * camera.zoom
@@ -129,7 +129,12 @@ class Egg:
 class Animal:
     SPECIES_VISION_RANGE: float = 150.0
     SPECIES_VISION_ANGLE: float = 120.0
-    HATCH_TIME: float = 60.0
+    HATCH_TIME: float = random.uniform(50.0, 100.0)
+
+    # 💡 종별 오버라이드 가능 — 실제 값 조정은 system.py에서 한 번에 한다
+    HOME_BUILD_PROB: float = 0.8   # 둥지(집) 생성 확률 (초당 1회 판정)
+    BREED_PROB: float      = 0.9   # 번식(알 낳기) 확률 (초당 1회 판정)
+    FOOD_VALUE: float      = 35.0  # 💡 이 동물이 잡아먹혔을 때 포식자 배고픔을 채워주는 양 (기본값)
 
     def __init__(self, name: str, coordinate: Tuple[float, float], hp: int = 100, max_hp: int = 100,
                  stamina: float = 100.0, max_stamina: float = 100.0, max_speed: float = 80.0, hunger: float = 0.0,
@@ -156,12 +161,11 @@ class Animal:
         self.is_adult = False
         self.sex = sex
         self.couple: Optional["Animal"] = None
+        self._breed_cooldown = 0.0          # 번식 후 재커플 금지 타이머
         self.can_breed = False
         self.home_coordinate = list(home_coordinate) if home_coordinate else None
         self.at_home = False
         self.home_threshold = 120.0
-        self.home_build_prob = 0.8
-        self.breed_prob = 0.9
         self.home_range = 150.0
         self._home_timer = 0.0
         self.is_stunned = False
@@ -212,9 +216,9 @@ class Animal:
         zoom_key = round(camera.zoom, 1)
         angle_key = int(math.degrees(self.facing_angle) / 10) * 10
         cache_key = (zoom_key, angle_key, r)
-        
+
         if cache_key not in self.__class__._fov_cache:
-            max_r = min(r, 1500) 
+            max_r = min(r, 1500)
             surf = pygame.Surface((max_r * 2 + 2, max_r * 2 + 2), pygame.SRCALPHA)
             c = (max_r + 1, max_r + 1)
             if self.vision_angle >= 360:
@@ -295,7 +299,7 @@ class Animal:
         self.heal(food_value)
         # 💡 [보너스] 밥을 먹었으니 에너지가 돌도록 스태미나도 50% 비율로 회복시켜 줍니다.
         self.stamina = min(self.max_stamina, self.stamina + (food_value * 0.5))
-    
+
     # ── 공격 ────────────────────────────────────
     def attack(self, target: "Animal", damage: float = 10.0):
         if not self.alive or not target.alive: return
@@ -317,27 +321,73 @@ class Animal:
     def _home_speed_multiplier(self) -> float:
         return 1.15 if self.near_home() else 1.0
 
-    COUPLE_RANGE: float = 80.0
+    COUPLE_RANGE: float = 80.0                       # 커플 유지(리쉬) 기준 거리
+    COUPLE_FORM_RANGE: float = 50.0                  # 커플 생성 범위
+    COUPLE_HEADING_LIMIT: float = math.radians(30)   # 커플 이동 방향 허용 차이 (30도)
+    BREED_COOLDOWN: float = 15.0                     # 번식 후 다시 커플이 될 때까지 대기 시간(초)
 
     def try_form_couple(self, other: "Animal") -> bool:
         if (self.is_adult and other.is_adult
                 and self.couple is None and other.couple is None
+                and self._breed_cooldown <= 0 and other._breed_cooldown <= 0
                 and type(self) is type(other)
-                and self.distance_to(other) <= self.COUPLE_RANGE
+                and self.distance_to(other) <= self.COUPLE_FORM_RANGE
                 and self.sex != other.sex):
             self.couple = other
             other.couple = self
             return True
         return False
-    
+
     def couple_follow(self):
         if self.couple and self.couple.alive:
             dist = self.distance_to(self.couple)
-            if dist > self.COUPLE_RANGE * 1.5:
+            if dist > self.COUPLE_RANGE * 3.0:
                 self.move(dt=0.1, target=self.couple.coordinate, speed_multiplier=1.2)
-                target_distance = self.COUPLE_RANGE * 1.5 if self.home_coordinate else self.home_threshold * 0.5
+                target_distance = self.COUPLE_RANGE * 3.0 if self.home_coordinate else self.home_threshold * 0.5
                 return self.couple.coordinate
         return None
+
+    def _align_couple_heading(self):
+        """커플 중 id가 큰 쪽(팔로워)이 상대(리더)의 이동 방향과 30도 이내가 되도록 진행 방향을 보정."""
+        c = self.couple
+        if not (c and c.alive): return
+        if id(self) < id(c): return                 # id가 작은 쪽이 리더 → 보정하지 않음
+        my_spd   = math.hypot(*self.velocity)
+        lead_spd = math.hypot(*c.velocity)
+        if my_spd < 1.0 or lead_spd < 1.0: return    # 한쪽이라도 거의 정지면 방향 의미 없음 → 패스
+        my_ang   = math.atan2(self.velocity[1], self.velocity[0])
+        lead_ang = math.atan2(c.velocity[1], c.velocity[0])
+        diff = _angle_diff(lead_ang, my_ang)         # 리더 기준 내 진행 방향 차이
+        limit = self.COUPLE_HEADING_LIMIT
+        if abs(diff) > limit:                        # 30도를 넘으면 경계로 클램프
+            new_ang = lead_ang + (limit if diff > 0 else -limit)
+            self.velocity[0] = math.cos(new_ang) * my_spd
+            self.velocity[1] = math.sin(new_ang) * my_spd
+
+    def _separate_couple(self):
+        """번식(알 낳기) 후 커플 관계를 끊고 서로 반대 방향으로 밀어내 헤어지게 한다."""
+        c = self.couple
+        if c is not None:
+            dx = self.coordinate[0] - c.coordinate[0]
+            dy = self.coordinate[1] - c.coordinate[1]
+            d = math.hypot(dx, dy)
+            if d < 1.0:
+                ang = random.uniform(0, 2 * math.pi)
+                dx, dy, d = math.cos(ang), math.sin(ang), 1.0
+            push = self.max_speed
+            self.velocity[0] += dx / d * push
+            self.velocity[1] += dy / d * push
+            c.velocity[0] -= dx / d * push
+            c.velocity[1] -= dy / d * push
+            c.couple = None
+            c._breed_cooldown = c.BREED_COOLDOWN
+            c.home_coordinate = None
+            c.at_home = False
+        self.couple = None
+        self._breed_cooldown = self.BREED_COOLDOWN
+        self.home_coordinate = None
+        self.at_home = False
+        print(f"{self.name} 💔 커플 해제 (번식 후 헤어짐)")
 
     def try_return_home(self, dt: float) -> bool:
         """번식을 위해 집으로 돌아가는 로직. 집으로 향하고 있으면 True 반환"""
@@ -355,7 +405,7 @@ class Animal:
         c = self.couple
         if (c is not None and c.alive and self.home_coordinate is None
                 and self.distance_to(c) <= self.home_threshold):
-            if random.random() < self.home_build_prob:
+            if random.random() < self.HOME_BUILD_PROB:
                 mid = [(self.coordinate[0] + c.coordinate[0]) / 2,
                        (self.coordinate[1] + c.coordinate[1]) / 2]
                 self.home_coordinate = mid
@@ -364,11 +414,12 @@ class Animal:
 
         if (self.home_coordinate is not None and self.at_home and self.can_breed
                 and c is not None and c.alive and c.at_home):
-            if random.random() < self.breed_prob:
+            if random.random() < self.BREED_PROB:
                 result = self.make_child()
                 if result:
                     self.pending_child = result
                     print(f"{self.name} 번식 성공!")
+                    self._separate_couple()   # 번식(알 낳기) 직후 커플 해제 & 헤어짐
                 return result
         return None
 
@@ -477,7 +528,9 @@ class Animal:
         self.at_home = self.is_at_home()
         self._update_home(dt)
         self._update_home_buff(dt)
-        if self.couple is None:
+        if self._breed_cooldown > 0:                       # 번식 후 재커플 금지 시간 차감
+            self._breed_cooldown = max(0.0, self._breed_cooldown - dt)
+        if self.couple is None and self._breed_cooldown <= 0:
             for a in animals:
                 if self.try_form_couple(a):
                     print(f"💖 {self.name}({self.sex}) ❤️ {a.name}({a.sex}) 커플 성사!")
@@ -540,7 +593,7 @@ class Predator(Animal):
         if self.distance_to(target) <= self.attack_range:
             if random.random() < self.attack_success_rate:
                 self.attack(target, base_damage)
-                if not target.alive: self.eat(food_value)
+                if not target.alive: self.eat(target.FOOD_VALUE)   # 💡 사냥감 종류별 영양값
                 return True
         return False
 
@@ -563,6 +616,8 @@ class Predator(Animal):
         else:
             couple_tgt = self.couple_follow()
             self.move(dt, couple_tgt)
+            if couple_tgt is None:                 # 리쉬 안쪽일 때만 진행 방향 30도 정렬
+                self._align_couple_heading()
 
 # ════════════════════════════════════════════════
 #  Prey
@@ -658,3 +713,5 @@ class Prey(Animal):
             self.stop_fleeing()
             couple_tgt = self.couple_follow()
             self.move(dt, couple_tgt)
+            if couple_tgt is None:                 # 리쉬 안쪽일 때만 진행 방향 30도 정렬
+                self._align_couple_heading()
