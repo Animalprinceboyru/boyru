@@ -16,9 +16,10 @@ class PhysicsEngine:
                 d = math.sqrt((x1-x2)**2 + (y1-y2)**2)
                 if 0 < d < sep:
                     dx, dy = (x1-x2)/d, (y1-y2)/d
-                    f = (sep - d) * 0.5
+                    # 💡 [핵심 수정] 0.5는 너무 강하게 반발하여 진동을 일으킵니다. 0.1로 부드럽게 낮춤!
+                    f = (sep - d) * 0.1 
                     a1.coordinate = [x1 + dx*f, y1 + dy*f]
-                    a2.coordinate = [x2 - dx*f, y2 - dy*f] #두개 다 대괄호로 바꿈
+                    a2.coordinate = [x2 - dx*f, y2 - dy*f]
 
     @staticmethod
     def keep_in_bounds(pos: Tuple[float,float],

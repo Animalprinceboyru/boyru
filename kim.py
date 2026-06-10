@@ -26,7 +26,7 @@ class Mosquito(FlyingAnimal):
         self.max_speed = 60.0
         self.max_stamina = 50.0
         self.stamina = 50.0
-        self.max_age = 1000.0
+        self.max_age = 800.0
         
         self.bite_damage = 5.0        
         self.bite_poison_dps = 2.0    

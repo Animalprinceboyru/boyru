@@ -78,7 +78,7 @@ class FlyingAnimal(Prey):
         child.max_hp = int(self.max_hp * random.uniform(0.9, 1.1))
         child.hp = child.max_hp
         child.max_stamina = self.max_stamina * random.uniform(0.9, 1.1)
-        child.max_speed = self.max_speed * random.uniform(0.9, 1.1)
+        child.max_speed = max(self.max_speed * random.uniform(0.9, 1.1), 20)
         child.flying_speed = self.flying_speed * random.uniform(0.9, 1.1)
         return child
 
