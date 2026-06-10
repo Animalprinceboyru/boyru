@@ -120,29 +120,29 @@ def main():
         game_map.apples.append(Apple(x=center_x + random.uniform(-450, 450), y=center_y + random.uniform(-450, 450)))
 
     # 1. 수중 포식자 (굶주림 65: 스폰 후 약 10~20초 뒤부터 본격적인 사냥 개시하여 초반 생태계 붕괴 방지)
-    for i in range(6):
+    for i in range(3):
         animals.append(Anaconda(name=f"아나콘다_{i+1}", coordinate=get_random_water_pos(), sex="male" if i%2==0 else "female", age=600, hunger=65.0))
         animals.append(Crocodile(name=f"악어_{i+1}", coordinate=get_random_water_pos(), sex="female" if i%2==0 else "male", age=600, hunger=65.0))
         animals.append(ElectricEel(name=f"전기뱀장어_{i+1}", coordinate=get_random_water_pos(), sex="male" if i%2==0 else "female", age=600, hunger=65.0))
 
     # 2. 타란튤라 (육지 포식자, 거미줄 트랩 시전)
-    for i in range(6):
+    for i in range(3):
         animals.append(Tarantula(name=f"타란튤라_{i+1}", coordinate=get_random_land_pos(), sex="female" if i%2==0 else "male", age=600, hunger=65.0))
         
     # 3. 🦟 모기 (새로 추가! 독개구리의 먹잇감이자 생태계 하위 계층)
-    for i in range(25):
+    for i in range(4):
         animals.append(Mosquito(name=f"모기_{i+1}", coordinate=get_random_land_pos(), sex="female" if i%2==0 else "male", age=600))
 
     # 4. 독개구리 (모기를 잡아먹으며 버티고, 포식자에게 독을 걸어 생태계 밸런스 유지)
-    for i in range(12):
+    for i in range(10):
         animals.append(ToxicFrog(name=f"독개구리_{i+1}", coordinate=get_random_land_pos(), sex="male" if i%2==0 else "female", age=600))
 
     # 5. 카피바라 (가장 많이 잡아먹히므로 30마리로 세팅, 떼지어 다니는 무리 방어 버프 시전)
-    for i in range(30):
+    for i in range(15):
         animals.append(Capybara(name=f"카피바라_{i+1}", coordinate=get_random_land_pos(), sex="female" if i%2==0 else "male", age=600))
         
     # 6. 원숭이 (나무 타기, 과일 투척 시전)
-    for i in range(15):
+    for i in range(7):
         animals.append(Monkey(name=f"원숭이_{i+1}", coordinate=get_random_land_pos(), sex="male" if i%2==0 else "female", age=600))
         
     # 7. 앵무새 (하늘에서 공중 경보 시전, 가속 버프 제공)
